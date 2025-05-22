@@ -159,7 +159,7 @@ jobs:
     if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
     environment:
       name: staging
-      url: ${{ secrets.STAGING_URL || 'https://staging.student-app.com' }}
+      url: https://staging.student-app.com
     
     steps:
       - name: 📥 Checkout code
@@ -211,9 +211,13 @@ jobs:
 
       - name: 🏥 Staging Health Check
         env:
-          STAGING_URL: ${{ secrets.STAGING_URL || 'http://staging.student-app.com:5000' }}
+          STAGING_URL: ${{ secrets.STAGING_URL }}
         run: |
           echo "🏥 Running staging health checks..."
+          
+          # Set default URL if secret not provided
+          HEALTH_URL="${STAGING_URL:-http://staging.student-app.com:5000}"
+          echo "Using staging URL: $HEALTH_URL"
           
           # Wait for service to be ready
           sleep 30
@@ -221,12 +225,12 @@ jobs:
           # Health check with retries
           for i in {1..10}; do
             echo "Health check attempt $i/10"
-            if curl -f -s "$STAGING_URL/health"; then
+            if curl -f -s "$HEALTH_URL/health"; then
               echo "✅ Staging deployment successful!"
               
               # Test main endpoints
-              curl -f "$STAGING_URL/" || exit 1
-              curl -f "$STAGING_URL/students" || exit 1
+              curl -f "$HEALTH_URL/" || exit 1
+              curl -f "$HEALTH_URL/students" || exit 1
               
               echo "✅ All staging tests passed!"
               break
@@ -237,11 +241,13 @@ jobs:
           done
 
       - name: 📢 Notify Staging Deployment
+        env:
+          STAGING_URL: ${{ secrets.STAGING_URL }}
         if: always()
         run: |
           if [ "${{ job.status }}" == "success" ]; then
             echo "✅ Staging deployment successful!"
-            echo "🔗 URL: ${{ secrets.STAGING_URL }}"
+            echo "🔗 URL: ${STAGING_URL:-http://staging.student-app.com:5000}"
           else
             echo "❌ Staging deployment failed!"
           fi
@@ -254,7 +260,7 @@ jobs:
     if: github.event_name == 'release' && github.event.action == 'published'
     environment:
       name: production
-      url: ${{ secrets.PRODUCTION_URL || 'https://student-app.com' }}
+      url: https://student-app.com
     
     steps:
       - name: 📥 Checkout code
@@ -318,9 +324,13 @@ jobs:
 
       - name: 🏥 Production Health Check
         env:
-          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL || 'https://student-app.com' }}
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
         run: |
           echo "🏥 Running production health checks..."
+          
+          # Set default URL if secret not provided
+          HEALTH_URL="${PRODUCTION_URL:-https://student-app.com}"
+          echo "Using production URL: $HEALTH_URL"
           
           # Wait for service to be ready
           sleep 30
@@ -328,12 +338,12 @@ jobs:
           # Comprehensive health check
           for i in {1..15}; do
             echo "Production health check attempt $i/15"
-            if curl -f -s "$PRODUCTION_URL/health"; then
+            if curl -f -s "$HEALTH_URL/health"; then
               echo "✅ Production deployment successful!"
               
               # Test critical endpoints
-              curl -f "$PRODUCTION_URL/" || exit 1
-              curl -f "$PRODUCTION_URL/students" || exit 1
+              curl -f "$HEALTH_URL/" || exit 1
+              curl -f "$HEALTH_URL/students" || exit 1
               
               echo "✅ All production tests passed!"
               break
@@ -344,9 +354,11 @@ jobs:
           done
 
       - name: 🎉 Production Deployment Success
+        env:
+          PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
         run: |
           echo "🎉 Production deployment completed successfully!"
-          echo "🌐 Live URL: ${{ secrets.PRODUCTION_URL }}"
+          echo "🌐 Live URL: ${PRODUCTION_URL:-https://student-app.com}"
           echo "📊 Release: ${{ github.event.release.tag_name }}"
           echo "👤 Deployed by: ${{ github.actor }}"
 
