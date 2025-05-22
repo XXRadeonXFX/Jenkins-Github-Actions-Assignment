@@ -40,7 +40,9 @@ pipeline {
                 sshagent([env.SSH_CREDENTIALS_ID]) {
                     sh '''
                     echo "🔁 Copying files to EC2..."
-                    scp -o StrictHostKeyChecking=no -r * ${EC2_USER}@${EC2_HOST}:${HOME_DIR}/student-app
+                    scp -o StrictHostKeyChecking=no \
+                        Dockerfile Jenkinsfile README.md app.py requirements.txt test_app.py \
+                        ${EC2_USER}@${EC2_HOST}:${HOME_DIR}/student-app
 
                     echo "🚀 Running app on EC2..."
                     ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << EOF
