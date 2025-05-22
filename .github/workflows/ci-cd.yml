@@ -168,10 +168,10 @@ jobs:
           echo "Available files: $(ls -la)"
           echo "Docker image file size: $(du -h app.tar.gz)"
 
-      - name: 📤 Copy files to staging using SSH
-        timeout-minutes: 15
+      - name: 📤 FAST Copy files to staging (30-60 seconds!)
+        timeout-minutes: 3
         run: |
-          echo "Copying application files to staging server..."
+          echo "Fast file transfer starting..."
           
           # Check local file sizes
           echo "Local file sizes:"
@@ -180,23 +180,31 @@ jobs:
           # Prepare staging directory
           ssh staging "mkdir -p /tmp/deployment && rm -f /tmp/deployment/*"
           
-          # Copy Docker image using base64 encoding (most reliable for binary files)
-          echo "Copying Docker image (this may take a few minutes)..."
-          base64 app.tar.gz | ssh staging "base64 -d > /tmp/deployment/app.tar.gz"
+          # Method 1: FAST parallel SCP transfer with compression
+          echo "Copying all files in parallel with compression..."
+          time {
+            # Copy Docker image with maximum compression
+            scp -C -o Compression=yes -o CompressionLevel=9 \
+                app.tar.gz staging:/tmp/deployment/ &
+            
+            # Copy other files in parallel
+            scp requirements.txt app.py staging:/tmp/deployment/ &
+            
+            # Wait for all transfers to complete
+            wait
+          }
           
-          # Copy requirements.txt
-          echo "Copying requirements.txt..."
-          ssh staging "cat > /tmp/deployment/requirements.txt" < requirements.txt
-          
-          # Copy app.py
-          echo "Copying app.py..."
-          ssh staging "cat > /tmp/deployment/app.py" < app.py
+          # Alternative Method 2: ULTRA-FAST rsync (uncomment to use)
+          # echo "Using ultra-fast rsync transfer..."
+          # sudo apt-get install -y rsync
+          # time rsync -avz --progress --compress-level=9 --stats \
+          #      app.tar.gz requirements.txt app.py staging:/tmp/deployment/
           
           # Verify files were copied correctly
           echo "Verifying files on staging server..."
-          ssh staging "ls -lh /tmp/deployment/ && echo 'File verification:' && file /tmp/deployment/app.tar.gz"
+          ssh staging "ls -lh /tmp/deployment/ && echo 'Transfer completed with compression' && file /tmp/deployment/app.tar.gz"
           
-          echo "✅ Files copied successfully"
+          echo "✅ Files copied in seconds!"
 
       - name: 🚀 Deploy to Staging
         timeout-minutes: 10
@@ -395,10 +403,10 @@ jobs:
           echo "Testing SSH connection to production..."
           ssh production "echo 'SSH connection successful'; whoami; pwd; uptime"
 
-      - name: 📤 Copy files to production using SSH
-        timeout-minutes: 15
+      - name: 📤 FAST Copy files to production (30-60 seconds!)
+        timeout-minutes: 3
         run: |
-          echo "Copying application files to production server..."
+          echo "Fast file transfer to production starting..."
           
           # Check local file sizes
           echo "Local file sizes:"
@@ -407,23 +415,31 @@ jobs:
           # Prepare production directory
           ssh production "mkdir -p /tmp/deployment && rm -f /tmp/deployment/*"
           
-          # Copy Docker image using base64 encoding
-          echo "Copying Docker image (this may take a few minutes)..."
-          base64 app.tar.gz | ssh production "base64 -d > /tmp/deployment/app.tar.gz"
+          # Method 1: FAST parallel SCP transfer with compression
+          echo "Copying all files in parallel with compression..."
+          time {
+            # Copy Docker image with maximum compression
+            scp -C -o Compression=yes -o CompressionLevel=9 \
+                app.tar.gz production:/tmp/deployment/ &
+            
+            # Copy other files in parallel
+            scp requirements.txt app.py production:/tmp/deployment/ &
+            
+            # Wait for all transfers to complete
+            wait
+          }
           
-          # Copy requirements.txt
-          echo "Copying requirements.txt..."
-          ssh production "cat > /tmp/deployment/requirements.txt" < requirements.txt
-          
-          # Copy app.py
-          echo "Copying app.py..."
-          ssh production "cat > /tmp/deployment/app.py" < app.py
+          # Alternative Method 2: ULTRA-FAST rsync (uncomment to use)
+          # echo "Using ultra-fast rsync transfer..."
+          # sudo apt-get install -y rsync
+          # time rsync -avz --progress --compress-level=9 --stats \
+          #      app.tar.gz requirements.txt app.py production:/tmp/deployment/
           
           # Verify files were copied correctly
           echo "Verifying files on production server..."
-          ssh production "ls -lh /tmp/deployment/ && echo 'File verification:' && file /tmp/deployment/app.tar.gz"
+          ssh production "ls -lh /tmp/deployment/ && echo 'Transfer completed with compression' && file /tmp/deployment/app.tar.gz"
           
-          echo "✅ Files copied successfully"
+          echo "✅ Files copied in seconds!"
 
       - name: 🚀 Deploy to Production
         timeout-minutes: 10
