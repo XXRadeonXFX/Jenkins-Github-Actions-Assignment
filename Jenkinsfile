@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        SSH_CREDENTIALS_ID = "PRINCE-EC2-SSH-CRED"
+        SSH_CREDENTIALS_ID = "c3b12c2f-9959-46a6-b763-fc4e303082cb"
         EC2_USER = "ubuntu"
         EC2_HOST = "3.110.222.41"
         HOME_DIR = "/home/ubuntu"
