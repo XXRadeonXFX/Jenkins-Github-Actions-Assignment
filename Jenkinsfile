@@ -2,12 +2,6 @@ pipeline {
     agent any
 
     stages {
-        stage('Clone Repo') {
-            steps {
-                git 'https://github.com/XXRadeonXFX/Jenkins-Github-Actions-Assignment.git'
-            }
-        }
-
         stage('Install Dependencies') {
             steps {
                 sh '''
@@ -42,11 +36,8 @@ pipeline {
     }
 
     post {
-        always {
-            echo 'Pipeline finished.'
-        }
         success {
-            echo '✅ Build & deploy successful.'
+            echo '✅ Build & deployment successful.'
         }
         failure {
             echo '❌ Build failed.'
