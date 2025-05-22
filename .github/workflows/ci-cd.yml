@@ -183,12 +183,12 @@ jobs:
           # Method 1: FAST parallel SCP transfer with compression
           echo "Copying all files in parallel with compression..."
           time {
-            # Copy Docker image with maximum compression
-            scp -C -o Compression=yes -o CompressionLevel=9 \
-                app.tar.gz staging:/tmp/deployment/ &
+            # Copy Docker image
+            scp -C app.tar.gz staging:/tmp/deployment/
+
             
             # Copy other files in parallel
-            scp requirements.txt app.py staging:/tmp/deployment/ &
+            scp -C requirements.txt app.py staging:/tmp/deployment/
             
             # Wait for all transfers to complete
             wait
