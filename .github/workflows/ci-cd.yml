@@ -136,22 +136,28 @@ jobs:
           ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
           
-          # Create SSH config for easier connection
+          # Create SSH config with optimized settings
           cat > ~/.ssh/config << EOF
           Host staging
             HostName ${{ secrets.STAGING_HOST }}
             User ${{ secrets.STAGING_USER }}
             StrictHostKeyChecking no
             ConnectTimeout 30
-            ServerAliveInterval 60
+            ServerAliveInterval 30
             ServerAliveCountMax 3
+            TCPKeepAlive yes
+            Compression yes
+            BatchMode yes
+            ControlMaster auto
+            ControlPath ~/.ssh/control-%r@%h:%p
+            ControlPersist 300
           EOF
           chmod 600 ~/.ssh/config
 
       - name: 🧪 Test SSH Connection
         run: |
           echo "Testing SSH connection to staging..."
-          ssh staging "echo 'SSH connection successful'; whoami; pwd; docker --version || echo 'Docker not found'"
+          ssh staging "echo 'SSH connection successful'; whoami; pwd; uptime"
 
       - name: 🐛 Debug Environment
         run: |
@@ -162,20 +168,38 @@ jobs:
           echo "Available files: $(ls -la)"
           echo "Docker image file size: $(du -h app.tar.gz)"
 
-      - name: 📤 Copy files to staging
+      - name: 📤 Copy files to staging using SSH
+        timeout-minutes: 15
         run: |
           echo "Copying application files to staging server..."
           
-          # Copy Docker image
-          scp -v app.tar.gz staging:/tmp/app.tar.gz
+          # Check local file sizes
+          echo "Local file sizes:"
+          ls -lh app.tar.gz requirements.txt app.py
           
-          # Copy application files
-          scp -v requirements.txt staging:/tmp/requirements.txt
-          scp -v app.py staging:/tmp/app.py
+          # Prepare staging directory
+          ssh staging "mkdir -p /tmp/deployment && rm -f /tmp/deployment/*"
           
-          echo "Files copied successfully"
+          # Copy Docker image using base64 encoding (most reliable for binary files)
+          echo "Copying Docker image (this may take a few minutes)..."
+          base64 app.tar.gz | ssh staging "base64 -d > /tmp/deployment/app.tar.gz"
+          
+          # Copy requirements.txt
+          echo "Copying requirements.txt..."
+          ssh staging "cat > /tmp/deployment/requirements.txt" < requirements.txt
+          
+          # Copy app.py
+          echo "Copying app.py..."
+          ssh staging "cat > /tmp/deployment/app.py" < app.py
+          
+          # Verify files were copied correctly
+          echo "Verifying files on staging server..."
+          ssh staging "ls -lh /tmp/deployment/ && echo 'File verification:' && file /tmp/deployment/app.tar.gz"
+          
+          echo "✅ Files copied successfully"
 
       - name: 🚀 Deploy to Staging
+        timeout-minutes: 10
         run: |
           echo "Deploying to staging environment..."
           
@@ -183,6 +207,9 @@ jobs:
             set -e
             
             echo "=== Starting staging deployment ==="
+            
+            # Navigate to deployment directory
+            cd /tmp/deployment
             
             # Stop existing application
             echo "Stopping existing containers..."
@@ -198,19 +225,26 @@ jobs:
               sudo usermod -aG docker $USER
               sudo systemctl start docker
               sudo systemctl enable docker
+              echo "Docker installed successfully"
+            else
+              echo "Docker is already installed"
+              docker --version
             fi
             
             # Load new Docker image
             echo "Loading Docker image..."
-            cd /tmp
-            
             if [ -f app.tar.gz ]; then
+              echo "Decompressing and loading Docker image..."
+              gunzip -t app.tar.gz && echo "✅ Docker image file is valid"
               gunzip -c app.tar.gz | docker load
-              echo "Docker image loaded successfully"
+              echo "✅ Docker image loaded successfully"
             else
-              echo "Error: app.tar.gz not found"
+              echo "❌ Error: app.tar.gz not found"
               exit 1
             fi
+            
+            # Verify Docker image
+            docker images | grep student-management-app || exit 1
             
             # Run new container with MongoDB secret
             echo "Starting new container..."
@@ -223,13 +257,15 @@ jobs:
             
             # Wait for application to start
             echo "Waiting for application to start..."
-            sleep 15
+            sleep 20
             
             # Check if container is running
             if docker ps | grep student-app-staging; then
-              echo "✅ Container is running"
+              echo "✅ Container is running successfully"
+              docker logs student-app-staging --tail 10
             else
               echo "❌ Container failed to start"
+              echo "Container logs:"
               docker logs student-app-staging
               exit 1
             fi
@@ -238,19 +274,27 @@ jobs:
           STAGING_EOF
 
       - name: 🧪 Run staging health check
+        timeout-minutes: 5
         run: |
           echo "Running health check on staging..."
-          max_attempts=10
+          max_attempts=12
           attempt=1
           
           while [ $attempt -le $max_attempts ]; do
             echo "Health check attempt $attempt/$max_attempts"
             
-            if curl -f --connect-timeout 10 --retry 3 http://${{ secrets.STAGING_HOST }}:5000/health; then
+            if curl -f --connect-timeout 10 --max-time 30 http://${{ secrets.STAGING_HOST }}:5000/health; then
               echo "✅ Staging health check passed!"
               break
             else
               echo "❌ Health check failed, retrying in 15 seconds..."
+              
+              # Show container status on failure
+              if [ $attempt -eq 3 ] || [ $attempt -eq 6 ]; then
+                echo "Checking container status..."
+                ssh staging "docker ps -a | grep student-app || true; docker logs student-app-staging --tail 5 || true"
+              fi
+              
               sleep 15
               attempt=$((attempt + 1))
             fi
@@ -258,18 +302,19 @@ jobs:
           
           if [ $attempt -gt $max_attempts ]; then
             echo "❌ Staging health check failed after $max_attempts attempts"
-            echo "Checking container logs..."
-            ssh staging "docker logs student-app-staging --tail 50"
+            echo "Final container logs:"
+            ssh staging "docker logs student-app-staging --tail 20"
             exit 1
           fi
 
       - name: 🧪 Run staging smoke tests
+        timeout-minutes: 3
         run: |
           echo "Running smoke tests on staging..."
           
           # Test API endpoints
           echo "Testing /students endpoint..."
-          if curl -f --connect-timeout 10 http://${{ secrets.STAGING_HOST }}:5000/students; then
+          if curl -f --connect-timeout 10 --max-time 30 http://${{ secrets.STAGING_HOST }}:5000/students; then
             echo "✅ /students endpoint working"
           else
             echo "❌ /students endpoint failed"
@@ -277,7 +322,7 @@ jobs:
           fi
           
           echo "Testing POST /students endpoint..."
-          response=$(curl -f --connect-timeout 10 -X POST http://${{ secrets.STAGING_HOST }}:5000/students \
+          response=$(curl -f --connect-timeout 10 --max-time 30 -X POST http://${{ secrets.STAGING_HOST }}:5000/students \
             -H "Content-Type: application/json" \
             -d '{"name": "Test User", "age": 25}')
           
@@ -334,30 +379,54 @@ jobs:
             User ${{ secrets.PRODUCTION_USER }}
             StrictHostKeyChecking no
             ConnectTimeout 30
-            ServerAliveInterval 60
+            ServerAliveInterval 30
             ServerAliveCountMax 3
+            TCPKeepAlive yes
+            Compression yes
+            BatchMode yes
+            ControlMaster auto
+            ControlPath ~/.ssh/control-%r@%h:%p
+            ControlPersist 300
           EOF
           chmod 600 ~/.ssh/config
 
       - name: 🧪 Test SSH Connection
         run: |
           echo "Testing SSH connection to production..."
-          ssh production "echo 'SSH connection successful'; whoami; pwd; docker --version || echo 'Docker not found'"
+          ssh production "echo 'SSH connection successful'; whoami; pwd; uptime"
 
-      - name: 📤 Copy files to production
+      - name: 📤 Copy files to production using SSH
+        timeout-minutes: 15
         run: |
           echo "Copying application files to production server..."
           
-          # Copy Docker image
-          scp -v app.tar.gz production:/tmp/app.tar.gz
+          # Check local file sizes
+          echo "Local file sizes:"
+          ls -lh app.tar.gz requirements.txt app.py
           
-          # Copy application files
-          scp -v requirements.txt production:/tmp/requirements.txt
-          scp -v app.py production:/tmp/app.py
+          # Prepare production directory
+          ssh production "mkdir -p /tmp/deployment && rm -f /tmp/deployment/*"
           
-          echo "Files copied successfully"
+          # Copy Docker image using base64 encoding
+          echo "Copying Docker image (this may take a few minutes)..."
+          base64 app.tar.gz | ssh production "base64 -d > /tmp/deployment/app.tar.gz"
+          
+          # Copy requirements.txt
+          echo "Copying requirements.txt..."
+          ssh production "cat > /tmp/deployment/requirements.txt" < requirements.txt
+          
+          # Copy app.py
+          echo "Copying app.py..."
+          ssh production "cat > /tmp/deployment/app.py" < app.py
+          
+          # Verify files were copied correctly
+          echo "Verifying files on production server..."
+          ssh production "ls -lh /tmp/deployment/ && echo 'File verification:' && file /tmp/deployment/app.tar.gz"
+          
+          echo "✅ Files copied successfully"
 
       - name: 🚀 Deploy to Production
+        timeout-minutes: 10
         run: |
           echo "Deploying to production environment..."
           
@@ -365,6 +434,9 @@ jobs:
             set -e
             
             echo "=== Starting production deployment ==="
+            
+            # Navigate to deployment directory
+            cd /tmp/deployment
             
             # Create backup of current deployment
             if docker ps | grep student-app-production; then
@@ -380,6 +452,10 @@ jobs:
               sudo usermod -aG docker $USER
               sudo systemctl start docker
               sudo systemctl enable docker
+              echo "Docker installed successfully"
+            else
+              echo "Docker is already installed"
+              docker --version
             fi
             
             # Stop existing application gracefully
@@ -389,18 +465,21 @@ jobs:
             
             # Load new Docker image
             echo "Loading Docker image..."
-            cd /tmp
-            
             if [ -f app.tar.gz ]; then
+              echo "Decompressing and loading Docker image..."
+              gunzip -t app.tar.gz && echo "✅ Docker image file is valid"
               gunzip -c app.tar.gz | docker load
-              echo "Docker image loaded successfully"
+              echo "✅ Docker image loaded successfully"
             else
-              echo "Error: app.tar.gz not found"
+              echo "❌ Error: app.tar.gz not found"
               exit 1
             fi
             
             # Tag as current version
             docker tag student-management-app:${{ github.sha }} student-management-app:current
+            
+            # Verify Docker image
+            docker images | grep student-management-app || exit 1
             
             # Run new container with MongoDB secret
             echo "Starting new container..."
@@ -413,13 +492,15 @@ jobs:
             
             # Wait for application to start
             echo "Waiting for application to start..."
-            sleep 20
+            sleep 25
             
             # Check if container is running
             if docker ps | grep student-app-production; then
-              echo "✅ Container is running"
+              echo "✅ Container is running successfully"
+              docker logs student-app-production --tail 10
             else
               echo "❌ Container failed to start"
+              echo "Container logs:"
               docker logs student-app-production
               exit 1
             fi
@@ -428,19 +509,27 @@ jobs:
           PRODUCTION_EOF
 
       - name: 🧪 Run production health check
+        timeout-minutes: 8
         run: |
           echo "Running health check on production..."
-          max_attempts=15
+          max_attempts=20
           attempt=1
           
           while [ $attempt -le $max_attempts ]; do
             echo "Health check attempt $attempt/$max_attempts"
             
-            if curl -f --connect-timeout 10 --retry 3 http://${{ secrets.PRODUCTION_HOST }}/health; then
+            if curl -f --connect-timeout 10 --max-time 30 http://${{ secrets.PRODUCTION_HOST }}/health; then
               echo "✅ Production health check passed!"
               break
             else
               echo "❌ Health check failed, retrying in 20 seconds..."
+              
+              # Show container status on failure
+              if [ $attempt -eq 5 ] || [ $attempt -eq 10 ]; then
+                echo "Checking container status..."
+                ssh production "docker ps -a | grep student-app || true; docker logs student-app-production --tail 5 || true"
+              fi
+              
               sleep 20
               attempt=$((attempt + 1))
             fi
@@ -456,7 +545,7 @@ jobs:
               docker rm student-app-production || true
               
               # Find latest backup
-              BACKUP_IMAGE=$(docker images --format "table {{.Repository}}:{{.Tag}}" | grep backup- | head -n 1 | awk '{print $1}')
+              BACKUP_IMAGE=$(docker images --format "table {{.Repository}}:{{.Tag}}" | grep backup- | head -n 1)
               
               if [ ! -z "$BACKUP_IMAGE" ]; then
                 echo "Restoring backup: $BACKUP_IMAGE"
@@ -475,12 +564,13 @@ jobs:
           fi
 
       - name: 🧪 Run production smoke tests
+        timeout-minutes: 5
         run: |
           echo "Running comprehensive smoke tests on production..."
           
           # Test core API endpoints
           echo "Testing /health endpoint..."
-          if curl -f --connect-timeout 10 http://${{ secrets.PRODUCTION_HOST }}/health; then
+          if curl -f --connect-timeout 10 --max-time 30 http://${{ secrets.PRODUCTION_HOST }}/health; then
             echo "✅ Health endpoint working"
           else
             echo "❌ Health endpoint failed"
@@ -488,7 +578,7 @@ jobs:
           fi
           
           echo "Testing /students endpoint..."
-          if curl -f --connect-timeout 10 http://${{ secrets.PRODUCTION_HOST }}/students; then
+          if curl -f --connect-timeout 10 --max-time 30 http://${{ secrets.PRODUCTION_HOST }}/students; then
             echo "✅ Students endpoint working"
           else
             echo "❌ Students endpoint failed"
@@ -496,7 +586,7 @@ jobs:
           fi
           
           echo "Testing POST /students endpoint..."
-          response=$(curl -f --connect-timeout 10 -X POST http://${{ secrets.PRODUCTION_HOST }}/students \
+          response=$(curl -f --connect-timeout 10 --max-time 30 -X POST http://${{ secrets.PRODUCTION_HOST }}/students \
             -H "Content-Type: application/json" \
             -d '{"name": "Production Test User", "age": 25}')
           
@@ -508,14 +598,14 @@ jobs:
             student_id=$(echo "$response" | grep -o '"_id":"[^"]*"' | cut -d'"' -f4)
             if [ ! -z "$student_id" ]; then
               echo "Testing GET /students/$student_id endpoint..."
-              if curl -f --connect-timeout 10 http://${{ secrets.PRODUCTION_HOST }}/students/$student_id; then
+              if curl -f --connect-timeout 10 --max-time 30 http://${{ secrets.PRODUCTION_HOST }}/students/$student_id; then
                 echo "✅ GET by ID working"
               else
                 echo "❌ GET by ID failed"
               fi
               
               echo "Testing DELETE /students/$student_id endpoint..."
-              if curl -f --connect-timeout 10 -X DELETE http://${{ secrets.PRODUCTION_HOST }}/students/$student_id; then
+              if curl -f --connect-timeout 10 --max-time 30 -X DELETE http://${{ secrets.PRODUCTION_HOST }}/students/$student_id; then
                 echo "✅ DELETE endpoint working"
               else
                 echo "❌ DELETE endpoint failed"
