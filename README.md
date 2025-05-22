@@ -141,6 +141,8 @@ student-management-cicd/
    ```
 
 ## 🔄 Jenkins CI/CD Pipeline
+![Jenkins Pipeline Execution](screenshots/jenkins-pipeline.png)
+*Jenkins pipeline showing all stages executing successfully*
 
 ### **Pipeline Stages:**
 
