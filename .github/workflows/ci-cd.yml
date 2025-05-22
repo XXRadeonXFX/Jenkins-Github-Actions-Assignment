@@ -169,7 +169,7 @@ jobs:
           echo "Docker image file size: $(du -h app.tar.gz)"
 
       - name: 📤 FAST Copy files to staging (30-60 seconds!)
-        timeout-minutes: 1
+        timeout-minutes: 10
         run: |
           echo "Fast file transfer starting..."
           
