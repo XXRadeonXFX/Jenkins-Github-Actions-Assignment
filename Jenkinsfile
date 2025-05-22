@@ -9,6 +9,7 @@ pipeline {
         DOCKER_IMAGE = "student-app"
         CONTAINER_NAME = "student-app-container"
         APP_PORT = "5000"
+        NOTIFICATION_EMAIL = "prince.thakur24051996@gmail.com"
     }
     
     stages {
@@ -175,6 +176,19 @@ pipeline {
                 echo "✅ Pipeline completed successfully!"
                 echo "🌐 Application available at: http://${EC2_HOST}:${APP_PORT}"
             }
+            
+            // Email notification for success
+            mail to: env.NOTIFICATION_EMAIL,
+                 subject: "✅ Success: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                 body: """
+                 🎉 Build succeeded!
+                 
+                 Job: ${env.JOB_NAME}
+                 Build: #${env.BUILD_NUMBER}
+                 Application URL: http://${EC2_HOST}:${APP_PORT}
+                 
+                 View details: ${env.BUILD_URL}
+                 """
         }
         
         failure {
@@ -182,6 +196,18 @@ pipeline {
                 echo "❌ Pipeline failed!"
                 collectDebugInfo()
             }
+            
+            // Email notification for failure
+            mail to: env.NOTIFICATION_EMAIL,
+                 subject: "❌ Failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                 body: """
+                 ❌ Build failed!
+                 
+                 Job: ${env.JOB_NAME}
+                 Build: #${env.BUILD_NUMBER}
+                 
+                 Check details and logs: ${env.BUILD_URL}
+                 """
         }
     }
 }
