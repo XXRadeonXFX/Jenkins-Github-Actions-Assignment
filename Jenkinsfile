@@ -9,7 +9,7 @@ pipeline {
         DOCKER_IMAGE = "student-app"
         CONTAINER_NAME = "student-app-container"
         APP_PORT = "5000"
-        NOTIFICATION_EMAIL = "yourname@gmail.com"
+        NOTIFICATION_EMAIL = "prince.thakur24051996@gmail.com"
     }
     
     stages {
