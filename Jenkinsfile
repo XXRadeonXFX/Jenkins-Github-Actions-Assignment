@@ -9,8 +9,45 @@ pipeline {
         DOCKER_IMAGE = "student-app"
         CONTAINER_NAME = "student-app-container"
         APP_PORT = "5000"
-        NOTIFICATION_EMAIL = "prince.thakur24051996@gmail.com"
+        NOTIFICATION_EMAIL = "yourname@gmail.com"
+        unstable {
+            script {
+                echo "⚠️ Pipeline completed with warnings"
+            }
+            
+            // Email notification for unstable build
+            mail to: env.NOTIFICATION_EMAIL,
+                 subject: "⚠️ UNSTABLE: ${env.JOB_NAME} Build #${env.BUILD_NUMBER} ⚠️",
+                 body: """
+═══════════════════════════════════════════════════════════════
+⚠️ BUILD UNSTABLE! ⚠️
+═══════════════════════════════════════════════════════════════
+
+📋 BUILD DETAILS:
+   • Job Name: ${env.JOB_NAME}
+   • Build Number: #${env.BUILD_NUMBER}
+   • Completed Time: ${new Date()}
+   • Status: UNSTABLE (some tests may have failed)
+
+🔍 INVESTIGATION NEEDED:
+   • Application URL: http://${EC2_HOST}:${APP_PORT}
+   • Some tests may have failed but deployment continued
+   • Check test results and application functionality
+
+🔗 REVIEW LINKS:
+   • View Build: ${env.BUILD_URL}
+   • Console Output: ${env.BUILD_URL}console
+   • Test Application: http://${EC2_HOST}:${APP_PORT}
+
+⚠️ Please review test results and application status!
+
+═══════════════════════════════════════════════════════════════
+Review Required! ⚠️
+═══════════════════════════════════════════════════════════════
+                 """
+        }
     }
+        }
     
     stages {
         stage('🔍 Environment Validation') {
@@ -177,17 +214,38 @@ pipeline {
                 echo "🌐 Application available at: http://${EC2_HOST}:${APP_PORT}"
             }
             
-            // Email notification for success
+            // Attractive email notification for success
             mail to: env.NOTIFICATION_EMAIL,
-                 subject: "✅ Success: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                 subject: "🎉 SUCCESS: ${env.JOB_NAME} Build #${env.BUILD_NUMBER} ✅",
                  body: """
-                 🎉 Build succeeded!
-                 
-                 Job: ${env.JOB_NAME}
-                 Build: #${env.BUILD_NUMBER}
-                 Application URL: http://${EC2_HOST}:${APP_PORT}
-                 
-                 View details: ${env.BUILD_URL}
+═══════════════════════════════════════════════════════════════
+🎉 BUILD SUCCESSFUL! 🎉
+═══════════════════════════════════════════════════════════════
+
+📋 BUILD DETAILS:
+   • Job Name: ${env.JOB_NAME}
+   • Build Number: #${env.BUILD_NUMBER}
+   • Build Time: ${new Date()}
+   • Jenkins URL: ${env.JENKINS_URL}
+
+🚀 DEPLOYMENT INFO:
+   • Application URL: http://${EC2_HOST}:${APP_PORT}
+   • Target Server: ${EC2_HOST}
+   • Container: ${CONTAINER_NAME}
+   • Docker Image: ${DOCKER_IMAGE}
+
+🔗 QUICK LINKS:
+   • View Build: ${env.BUILD_URL}
+   • Console Output: ${env.BUILD_URL}console
+   • Test Application: http://${EC2_HOST}:${APP_PORT}
+
+✅ All stages completed successfully!
+✅ Application is running and healthy!
+✅ Ready for use!
+
+═══════════════════════════════════════════════════════════════
+Happy Coding! 🚀
+═══════════════════════════════════════════════════════════════
                  """
         }
         
@@ -197,16 +255,51 @@ pipeline {
                 collectDebugInfo()
             }
             
-            // Email notification for failure
+            // Attractive email notification for failure
             mail to: env.NOTIFICATION_EMAIL,
-                 subject: "❌ Failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                 subject: "🚨 FAILURE: ${env.JOB_NAME} Build #${env.BUILD_NUMBER} ❌",
                  body: """
-                 ❌ Build failed!
-                 
-                 Job: ${env.JOB_NAME}
-                 Build: #${env.BUILD_NUMBER}
-                 
-                 Check details and logs: ${env.BUILD_URL}
+═══════════════════════════════════════════════════════════════
+🚨 BUILD FAILED! 🚨
+═══════════════════════════════════════════════════════════════
+
+📋 BUILD DETAILS:
+   • Job Name: ${env.JOB_NAME}
+   • Build Number: #${env.BUILD_NUMBER}
+   • Failed Time: ${new Date()}
+   • Jenkins URL: ${env.JENKINS_URL}
+
+💥 FAILURE INFO:
+   • Target Server: ${EC2_HOST}
+   • Application Port: ${APP_PORT}
+   • Container: ${CONTAINER_NAME}
+   • Docker Image: ${DOCKER_IMAGE}
+
+🔧 TROUBLESHOOTING LINKS:
+   • View Build: ${env.BUILD_URL}
+   • Console Logs: ${env.BUILD_URL}console
+   • Blue Ocean: ${env.BUILD_URL}display/redirect
+
+📊 COMMON FAILURE POINTS TO CHECK:
+   ❗ SSH connectivity to EC2: ${EC2_HOST}
+   ❗ Docker service status on Jenkins & EC2
+   ❗ Application dependencies in requirements.txt
+   ❗ Port ${APP_PORT} availability on EC2
+   ❗ Container build process and Dockerfile
+   ❗ EC2 disk space and memory
+
+🔍 DEBUG STEPS:
+   1. Check console logs for specific error messages
+   2. Verify EC2 instance is running and accessible
+   3. Test SSH connection manually: ssh ${EC2_USER}@${EC2_HOST}
+   4. Check Docker status: docker ps -a
+   5. Review container logs: docker logs ${CONTAINER_NAME}
+
+❌ Action Required: Please investigate and fix the issue!
+
+═══════════════════════════════════════════════════════════════
+Need Help? Check the troubleshooting guide! 🛠️
+═══════════════════════════════════════════════════════════════
                  """
         }
     }
