@@ -45,12 +45,13 @@ pipeline {
                         ${EC2_USER}@${EC2_HOST}:${HOME_DIR}/student-app
 
                     echo "🚀 Running app on EC2..."
-                    ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << EOF
+                    ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
                         cd ${HOME_DIR}/student-app
-                        docker stop student-app-container || true && docker rm student-app-container || true
+                        docker stop student-app-container || true
+                        docker rm student-app-container || true
                         docker build -t student-app .
                         docker run -d -p 5000:5000 --name student-app-container student-app
-                    EOF
+                    '
                     '''
                 }
             }
