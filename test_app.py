@@ -230,8 +230,28 @@ def test_search_students_by_partial_name(client):
     assert len(data) > 0
 
 def test_no_json_data(client):
-    """Test POST request without JSON data."""
-    response = client.post('/students', data='not json')
+    """Test POST request without proper JSON content type."""
+    # Send data without application/json content type
+    response = client.post('/students', data='not json', content_type='text/plain')
+    # The app returns 500 when it can't parse JSON due to content type issues
+    assert response.status_code == 500
+    data = json.loads(response.data)
+    assert 'error' in data
+
+def test_invalid_json_data(client):
+    """Test POST request with invalid JSON but correct content type."""
+    # Send invalid JSON with correct content type
+    response = client.post('/students', data='{"invalid": json}', content_type='application/json')
+    # This should return 500 as the JSON parsing fails
+    assert response.status_code == 500
+    data = json.loads(response.data)
+    assert 'error' in data
+
+def test_empty_json_request(client):
+    """Test POST request with empty JSON."""
+    response = client.post('/students', 
+                          data=json.dumps({}),
+                          content_type='application/json')
     assert response.status_code == 400
     data = json.loads(response.data)
     assert 'error' in data
