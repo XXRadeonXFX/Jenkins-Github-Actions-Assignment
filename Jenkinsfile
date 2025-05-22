@@ -1,6 +1,13 @@
 pipeline {
     agent any
 
+    environment {
+        SSH_CREDENTIALS_ID = "PRINCE-EC2-SSH-CRED"
+        EC2_USER = "ubuntu"
+        EC2_HOST = "3.110.222.41"
+        HOME_DIR = "/home/ubuntu"
+    }
+
     stages {
         stage('Install Dependencies') {
             steps {
@@ -28,9 +35,22 @@ pipeline {
             }
         }
 
-        stage('Run Flask App') {
+        stage('Deploy to EC2') {
             steps {
-                sh 'docker run -d -p 5000:5000 --name student-app-container student-app'
+                sshagent([env.SSH_CREDENTIALS_ID]) {
+                    sh '''
+                    echo "🔁 Copying files to EC2..."
+                    scp -o StrictHostKeyChecking=no -r * ${EC2_USER}@${EC2_HOST}:${HOME_DIR}/student-app
+
+                    echo "🚀 Running app on EC2..."
+                    ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} << EOF
+                        cd ${HOME_DIR}/student-app
+                        docker stop student-app-container || true && docker rm student-app-container || true
+                        docker build -t student-app .
+                        docker run -d -p 5000:5000 --name student-app-container student-app
+                    EOF
+                    '''
+                }
             }
         }
     }
@@ -40,10 +60,10 @@ pipeline {
             echo 'Pipeline finished.'
         }
         success {
-            echo '✅ Build & deploy successful.'
+            echo '✅ Build, test, and deploy successful.'
         }
         failure {
-            echo '❌ Build failed.'
+            echo '❌ Pipeline failed.'
         }
     }
 }
