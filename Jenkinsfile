@@ -1,25 +1,26 @@
 pipeline {
     agent any
 
-stage('Install Dependencies') {
-    steps {
-        sh '''
-        python3 -m venv venv
-        . venv/bin/activate
-        pip install --upgrade pip
-        pip install -r requirements.txt
-        '''
-    }
-}
+    stages {
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                python3 -m venv venv
+                . venv/bin/activate
+                pip install --upgrade pip
+                pip install -r requirements.txt
+                '''
+            }
+        }
 
-stage('Run Tests') {
-    steps {
-        sh '''
-        . venv/bin/activate
-        pytest test_app.py --maxfail=1 --disable-warnings -q || true
-        '''
-    }
-}
+        stage('Run Tests') {
+            steps {
+                sh '''
+                . venv/bin/activate
+                pytest test_app.py --maxfail=1 --disable-warnings -q || true
+                '''
+            }
+        }
 
         stage('Build Docker Image') {
             steps {
@@ -35,8 +36,11 @@ stage('Run Tests') {
     }
 
     post {
+        always {
+            echo 'Pipeline finished.'
+        }
         success {
-            echo '✅ Build & deployment successful.'
+            echo '✅ Build & deploy successful.'
         }
         failure {
             echo '❌ Build failed.'
