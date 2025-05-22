@@ -184,11 +184,10 @@ jobs:
           echo "Copying all files in parallel with compression..."
           time {
             # Copy Docker image
-            scp -C app.tar.gz staging:/tmp/deployment/
-
+            scp -C app.tar.gz staging:/tmp/deployment/ &
             
             # Copy other files in parallel
-            scp -C requirements.txt app.py staging:/tmp/deployment/
+            scp requirements.txt app.py staging:/tmp/deployment/ &
             
             # Wait for all transfers to complete
             wait
