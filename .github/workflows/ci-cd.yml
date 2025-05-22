@@ -41,10 +41,21 @@ jobs:
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
 
-      - name: 🏗️ Build application
+      - name: 🏗️ Build Docker image
         run: |
-          echo "Application built successfully"
-          echo "MongoDB connection configured for cloud database"
+          echo "Building Docker image..."
+          docker build -t student-management-app:${{ github.sha }} .
+          echo "Docker image built successfully"
+
+      - name: 💾 Save Docker image
+        run: |
+          docker save student-management-app:${{ github.sha }} | gzip > app.tar.gz
+
+      - name: 📤 Upload Docker image artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: docker-image
+          path: app.tar.gz
 
   code-quality:
     runs-on: ubuntu-latest
@@ -106,27 +117,94 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
+      - name: 📥 Download Docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: docker-image
+
+      - name: 🔑 Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
+
       - name: 🚀 Deploy to Staging
         run: |
           echo "Deploying to staging environment..."
-          echo "Staging Host: ${{ secrets.STAGING_HOST }}"
-          echo "Staging User: ${{ secrets.STAGING_USER }}"
-          echo "Using MongoDB Cloud URI for staging"
-          # Add your actual deployment commands here
-          # Example: ssh ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} "deployment commands"
-        env:
-          MONGO_URI: ${{ secrets.MONGO_URI }}
+          
+          # Copy application files to staging server
+          scp -i ~/.ssh/id_rsa app.tar.gz ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}:/tmp/
+          scp -i ~/.ssh/id_rsa requirements.txt ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}:/tmp/
+          scp -i ~/.ssh/id_rsa app.py ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}:/tmp/
+          
+          # Execute deployment commands on staging server
+          ssh -i ~/.ssh/id_rsa ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} << 'EOF'
+            # Stop existing application
+            sudo pkill -f "python.*app.py" || true
+            docker stop student-app-staging || true
+            docker rm student-app-staging || true
+            
+            # Load new Docker image
+            cd /tmp
+            gunzip -c app.tar.gz | docker load
+            
+            # Run new container with MongoDB secret
+            docker run -d \
+              --name student-app-staging \
+              --restart unless-stopped \
+              -p 5000:5000 \
+              -e MONGO_URI="${{ secrets.MONGO_URI }}" \
+              student-management-app:${{ github.sha }}
+            
+            # Wait for application to start
+            sleep 10
+            
+            echo "✅ Staging deployment completed!"
+          EOF
+
+      - name: 🧪 Run staging health check
+        run: |
+          echo "Running health check on staging..."
+          max_attempts=5
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "Health check attempt $attempt/$max_attempts"
+            if curl -f http://${{ secrets.STAGING_HOST }}:5000/health; then
+              echo "✅ Staging health check passed!"
+              break
+            else
+              echo "❌ Health check failed, retrying in 10 seconds..."
+              sleep 10
+              attempt=$((attempt + 1))
+            fi
+          done
+          
+          if [ $attempt -gt $max_attempts ]; then
+            echo "❌ Staging health check failed after $max_attempts attempts"
+            exit 1
+          fi
 
       - name: 🧪 Run staging smoke tests
         run: |
           echo "Running smoke tests on staging..."
-          echo "Testing API endpoints..."
-          # Add actual smoke test commands here
-          # curl -f http://${{ secrets.STAGING_HOST }}/students || exit 1
+          
+          # Test API endpoints
+          echo "Testing /students endpoint..."
+          curl -f http://${{ secrets.STAGING_HOST }}:5000/students || exit 1
+          
+          echo "Testing POST /students endpoint..."
+          curl -f -X POST http://${{ secrets.STAGING_HOST }}:5000/students \
+            -H "Content-Type: application/json" \
+            -d '{"name": "Test User", "age": 25}' || exit 1
+          
+          echo "✅ All smoke tests passed!"
 
       - name: 📢 Staging deployment notification
         run: |
           echo "✅ Staging deployment completed successfully!"
+          echo "Staging URL: http://${{ secrets.STAGING_HOST }}:5000"
           echo "Staging environment is ready for testing"
 
   deploy-production:
@@ -139,28 +217,125 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
+      - name: 📥 Download Docker image
+        uses: actions/download-artifact@v3
+        with:
+          name: docker-image
+
+      - name: 🔑 Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PRODUCTION_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
+
       - name: 🚀 Deploy to Production
         run: |
           echo "Deploying to production environment..."
-          echo "Production Host: ${{ secrets.PRODUCTION_HOST }}"
-          echo "Production User: ${{ secrets.PRODUCTION_USER }}"
-          echo "Using MongoDB Cloud URI for production"
-          # Add your actual deployment commands here
-          # Example: ssh ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} "deployment commands"
-        env:
-          MONGO_URI: ${{ secrets.MONGO_URI }}
+          
+          # Copy application files to production server
+          scp -i ~/.ssh/id_rsa app.tar.gz ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }}:/tmp/
+          scp -i ~/.ssh/id_rsa requirements.txt ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }}:/tmp/
+          scp -i ~/.ssh/id_rsa app.py ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }}:/tmp/
+          
+          # Execute deployment commands on production server
+          ssh -i ~/.ssh/id_rsa ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+            # Create backup of current deployment
+            docker tag student-management-app:current student-management-app:backup-$(date +%Y%m%d-%H%M%S) || true
+            
+            # Stop existing application gracefully
+            docker stop student-app-production || true
+            docker rm student-app-production || true
+            
+            # Load new Docker image
+            cd /tmp
+            gunzip -c app.tar.gz | docker load
+            
+            # Tag as current version
+            docker tag student-management-app:${{ github.sha }} student-management-app:current
+            
+            # Run new container with MongoDB secret
+            docker run -d \
+              --name student-app-production \
+              --restart unless-stopped \
+              -p 80:5000 \
+              -e MONGO_URI="${{ secrets.MONGO_URI }}" \
+              student-management-app:current
+            
+            # Wait for application to start
+            sleep 15
+            
+            echo "✅ Production deployment completed!"
+          EOF
+
+      - name: 🧪 Run production health check
+        run: |
+          echo "Running health check on production..."
+          max_attempts=10
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "Health check attempt $attempt/$max_attempts"
+            if curl -f http://${{ secrets.PRODUCTION_HOST }}/health; then
+              echo "✅ Production health check passed!"
+              break
+            else
+              echo "❌ Health check failed, retrying in 15 seconds..."
+              sleep 15
+              attempt=$((attempt + 1))
+            fi
+          done
+          
+          if [ $attempt -gt $max_attempts ]; then
+            echo "❌ Production health check failed after $max_attempts attempts"
+            echo "Rolling back deployment..."
+            ssh -i ~/.ssh/id_rsa ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+              docker stop student-app-production || true
+              docker rm student-app-production || true
+              docker run -d \
+                --name student-app-production \
+                --restart unless-stopped \
+                -p 80:5000 \
+                -e MONGO_URI="${{ secrets.MONGO_URI }}" \
+                student-management-app:backup-$(date +%Y%m%d)
+            EOF
+            exit 1
+          fi
 
       - name: 🧪 Run production smoke tests
         run: |
-          echo "Running smoke tests on production..."
-          echo "Testing critical API endpoints..."
-          # Add actual smoke test commands here
-          # curl -f http://${{ secrets.PRODUCTION_HOST }}/students || exit 1
+          echo "Running comprehensive smoke tests on production..."
+          
+          # Test core API endpoints
+          echo "Testing /health endpoint..."
+          curl -f http://${{ secrets.PRODUCTION_HOST }}/health || exit 1
+          
+          echo "Testing /students endpoint..."
+          curl -f http://${{ secrets.PRODUCTION_HOST }}/students || exit 1
+          
+          echo "Testing POST /students endpoint..."
+          response=$(curl -f -X POST http://${{ secrets.PRODUCTION_HOST }}/students \
+            -H "Content-Type: application/json" \
+            -d '{"name": "Production Test User", "age": 25}')
+          echo "Response: $response"
+          
+          # Extract student ID and test GET by ID
+          student_id=$(echo $response | grep -o '"_id":"[^"]*"' | cut -d'"' -f4)
+          if [ ! -z "$student_id" ]; then
+            echo "Testing GET /students/$student_id endpoint..."
+            curl -f http://${{ secrets.PRODUCTION_HOST }}/students/$student_id || exit 1
+            
+            echo "Testing DELETE /students/$student_id endpoint..."
+            curl -f -X DELETE http://${{ secrets.PRODUCTION_HOST }}/students/$student_id || exit 1
+          fi
+          
+          echo "✅ All production smoke tests passed!"
 
       - name: 📊 Production deployment notification
         run: |
           echo "🎉 Production deployment completed successfully!"
           echo "Version: ${{ github.event.release.tag_name }}"
+          echo "Production URL: http://${{ secrets.PRODUCTION_HOST }}"
           echo "Production environment is live and healthy"
 
   cleanup:
@@ -172,6 +347,7 @@ jobs:
       - name: 🧹 Cleanup test data
         run: |
           echo "Cleaning up any test data from cloud MongoDB..."
+          # Add cleanup script if needed
           echo "Test cleanup completed"
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
