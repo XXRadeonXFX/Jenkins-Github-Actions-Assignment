@@ -169,7 +169,7 @@ jobs:
           echo "Docker image file size: $(du -h app.tar.gz)"
 
       - name: 📤 FAST Copy files to staging (30-60 seconds!)
-        timeout-minutes: 3
+        timeout-minutes: 1
         run: |
           echo "Fast file transfer starting..."
           
@@ -181,20 +181,24 @@ jobs:
           ssh staging "mkdir -p /tmp/deployment && rm -f /tmp/deployment/*"
           
           # Method 1: FAST parallel SCP transfer with compression
-          echo "Copying all files in parallel with compression..."
-          time {
+          # echo "Copying all files in parallel with compression..."
+          # time {
             # Copy Docker image
-            scp -C app.tar.gz requirements.txt app.py staging:/tmp/deployment/
+            # scp -C -o Compression=yes o CompressionLevel=9 \
+            #     app.tar.gz staging:/tmp/deployment/ &
+            
+            # Copy other files in parallel
+            # scp requirements.txt app.py staging:/tmp/deployment/ &
             
             # Wait for all transfers to complete
-            # wait
-          }
+          #   wait
+          # }
           
           # Alternative Method 2: ULTRA-FAST rsync (uncomment to use)
-          # echo "Using ultra-fast rsync transfer..."
-          # sudo apt-get install -y rsync
-          # time rsync -avz --progress --compress-level=9 --stats \
-          #      app.tar.gz requirements.txt app.py staging:/tmp/deployment/
+          echo "Using ultra-fast rsync transfer..."
+          sudo apt-get install -y rsync
+          time rsync -avz --progress --compress-level=9 --stats \
+               app.tar.gz requirements.txt app.py staging:/tmp/deployment/
           
           # Verify files were copied correctly
           echo "Verifying files on staging server..."
