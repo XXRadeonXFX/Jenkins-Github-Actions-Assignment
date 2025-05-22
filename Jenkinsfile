@@ -10,44 +10,7 @@ pipeline {
         CONTAINER_NAME = "student-app-container"
         APP_PORT = "5000"
         NOTIFICATION_EMAIL = "yourname@gmail.com"
-        unstable {
-            script {
-                echo "⚠️ Pipeline completed with warnings"
-            }
-            
-            // Email notification for unstable build
-            mail to: env.NOTIFICATION_EMAIL,
-                 subject: "⚠️ UNSTABLE: ${env.JOB_NAME} Build #${env.BUILD_NUMBER} ⚠️",
-                 body: """
-═══════════════════════════════════════════════════════════════
-⚠️ BUILD UNSTABLE! ⚠️
-═══════════════════════════════════════════════════════════════
-
-📋 BUILD DETAILS:
-   • Job Name: ${env.JOB_NAME}
-   • Build Number: #${env.BUILD_NUMBER}
-   • Completed Time: ${new Date()}
-   • Status: UNSTABLE (some tests may have failed)
-
-🔍 INVESTIGATION NEEDED:
-   • Application URL: http://${EC2_HOST}:${APP_PORT}
-   • Some tests may have failed but deployment continued
-   • Check test results and application functionality
-
-🔗 REVIEW LINKS:
-   • View Build: ${env.BUILD_URL}
-   • Console Output: ${env.BUILD_URL}console
-   • Test Application: http://${EC2_HOST}:${APP_PORT}
-
-⚠️ Please review test results and application status!
-
-═══════════════════════════════════════════════════════════════
-Review Required! ⚠️
-═══════════════════════════════════════════════════════════════
-                 """
-        }
     }
-        }
     
     stages {
         stage('🔍 Environment Validation') {
@@ -299,6 +262,43 @@ Happy Coding! 🚀
 
 ═══════════════════════════════════════════════════════════════
 Need Help? Check the troubleshooting guide! 🛠️
+═══════════════════════════════════════════════════════════════
+                 """
+        }
+        
+        unstable {
+            script {
+                echo "⚠️ Pipeline completed with warnings"
+            }
+            
+            // Email notification for unstable build
+            mail to: env.NOTIFICATION_EMAIL,
+                 subject: "⚠️ UNSTABLE: ${env.JOB_NAME} Build #${env.BUILD_NUMBER} ⚠️",
+                 body: """
+═══════════════════════════════════════════════════════════════
+⚠️ BUILD UNSTABLE! ⚠️
+═══════════════════════════════════════════════════════════════
+
+📋 BUILD DETAILS:
+   • Job Name: ${env.JOB_NAME}
+   • Build Number: #${env.BUILD_NUMBER}
+   • Completed Time: ${new Date()}
+   • Status: UNSTABLE (some tests may have failed)
+
+🔍 INVESTIGATION NEEDED:
+   • Application URL: http://${EC2_HOST}:${APP_PORT}
+   • Some tests may have failed but deployment continued
+   • Check test results and application functionality
+
+🔗 REVIEW LINKS:
+   • View Build: ${env.BUILD_URL}
+   • Console Output: ${env.BUILD_URL}console
+   • Test Application: http://${EC2_HOST}:${APP_PORT}
+
+⚠️ Please review test results and application status!
+
+═══════════════════════════════════════════════════════════════
+Review Required! ⚠️
 ═══════════════════════════════════════════════════════════════
                  """
         }
