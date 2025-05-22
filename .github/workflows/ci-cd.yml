@@ -417,23 +417,23 @@ jobs:
           
           # Method 1: FAST parallel SCP transfer with compression
           echo "Copying all files in parallel with compression..."
-          time {
+          # time {
             # Copy Docker image with maximum compression
-            scp -C -o Compression=yes -o CompressionLevel=9 \
-                app.tar.gz production:/tmp/deployment/ &
+            # scp -C -o Compression=yes -o CompressionLevel=9 \
+            #     app.tar.gz production:/tmp/deployment/ &
             
             # Copy other files in parallel
-            scp requirements.txt app.py production:/tmp/deployment/ &
+            # scp requirements.txt app.py production:/tmp/deployment/ &
             
             # Wait for all transfers to complete
-            wait
-          }
+            # wait
+          # }
           
           # Alternative Method 2: ULTRA-FAST rsync (uncomment to use)
-          # echo "Using ultra-fast rsync transfer..."
-          # sudo apt-get install -y rsync
-          # time rsync -avz --progress --compress-level=9 --stats \
-          #      app.tar.gz requirements.txt app.py production:/tmp/deployment/
+          echo "Using ultra-fast rsync transfer..."
+          sudo apt-get install -y rsync
+          time rsync -avz --progress --compress-level=9 --stats \
+               app.tar.gz requirements.txt app.py production:/tmp/deployment/
           
           # Verify files were copied correctly
           echo "Verifying files on production server..."
