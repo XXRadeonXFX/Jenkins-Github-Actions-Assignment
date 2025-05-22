@@ -1,347 +1,390 @@
-# Jenkins CI/CD Pipeline for Flask Application
+# Student Management System - CI/CD Pipeline
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://jenkins.example.com)
 [![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
-[![Flask](https://img.shields.io/badge/flask-2.0%2B-red)](https://flask.palletsprojects.com/)
+[![Flask](https://img.shields.io/badge/flask-2.3%2B-red)](https://flask.palletsprojects.com/)
 [![Docker](https://img.shields.io/badge/docker-enabled-blue)](https://www.docker.com/)
+[![MongoDB](https://img.shields.io/badge/mongodb-supported-green)](https://www.mongodb.com/)
 
-## 📋 Project Description
+## 📋 Project Overview
 
-This project demonstrates a complete **Jenkins CI/CD pipeline** for a Python Flask web application. The pipeline automates testing, building, and deployment processes with comprehensive error handling and email notifications.
+This project demonstrates **complete CI/CD pipelines** for a Python Flask Student Management System using both **Jenkins** and **GitHub Actions**. The application securely connects to MongoDB using environment secrets and includes comprehensive testing, deployment automation, and monitoring.
 
-### 🎯 Objectives
-- Set up automated CI/CD pipeline using Jenkins
-- Implement testing, building, and deployment stages
-- Configure email notifications for build status
-- Deploy Flask application to EC2 using Docker
-- Demonstrate best practices for DevOps automation
+### 🎯 Assignment Objectives
+- **Jenkins CI/CD Pipeline**: Automated testing and deployment with email notifications
+- **GitHub Actions Workflow**: Multi-environment deployment using GitHub Secrets  
+- **Security**: Secure handling of MongoDB connection strings via secrets
+- **Documentation**: Complete setup and usage instructions
 
-## ✨ Features
+## ✨ Key Features
 
-- **🔄 Automated CI/CD Pipeline**: Complete automation from code commit to deployment
-- **🧪 Automated Testing**: Unit tests with pytest integration
+- **🔐 Secure Secret Management**: MongoDB URI handled via GitHub/Jenkins secrets
+- **🧪 Comprehensive Testing**: Unit tests with fallback support
 - **🐳 Docker Containerization**: Consistent deployment environment
-- **☁️ EC2 Deployment**: Cloud-based application hosting
-- **📧 Email Notifications**: Attractive HTML email alerts for build status
-- **🔍 Health Checks**: Automated application health monitoring
-- **🛠️ Self-Healing**: Automatic dependency installation and error recovery
-- **📊 Comprehensive Logging**: Detailed build and deployment logs
+- **☁️ Multi-Environment Deployment**: Staging and Production environments
+- **📧 Email Notifications**: Build status alerts (Jenkins)
+- **🏥 Health Monitoring**: Automated health checks and monitoring
+- **📊 Code Coverage**: Test coverage reporting
+- **🔒 Security Scanning**: Vulnerability detection
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   GitHub Repo   │───▶│   Jenkins CI    │───▶│   EC2 Server    │
+│   GitHub Repo   │───▶│ Jenkins/Actions │───▶│   Deployment    │
 │                 │    │                 │    │                 │
-│ • Flask App     │    │ • Build         │    │ • Docker        │
-│ • Dockerfile    │    │ • Test          │    │ • Application   │
-│ • Jenkinsfile   │    │ • Deploy        │    │ • Health Check  │
-│ • Requirements  │    │ • Notify        │    │                 │
+│ • Flask App     │    │ • Build         │    │ • Staging       │
+│ • Tests         │    │ • Test          │    │ • Production    │
+│ • Secrets       │    │ • Security Scan │    │ • Health Check  │
+│ • Pipelines     │    │ • Deploy        │    │ • Monitoring    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## 📋 Prerequisites
+## 🔐 Secret Configuration
 
-### System Requirements
-- **Jenkins Server**: Version 2.400+ with following plugins:
-  - Pipeline Plugin
-  - SSH Agent Plugin
-  - Email Extension Plugin
-  - Docker Pipeline Plugin
-- **Python**: Version 3.8 or higher
-- **Docker**: Version 20.10 or higher
-- **AWS EC2**: Ubuntu 20.04+ instance with SSH access
+### **GitHub Secrets Setup**
 
-### Required Tools
-```bash
-# On Jenkins Server
-sudo apt update
-sudo apt install -y python3 python3-pip python3-venv docker.io
-sudo systemctl start docker
-sudo systemctl enable docker
-sudo usermod -aG docker jenkins
+1. **Navigate to Repository Settings:**
+   ```
+   Your Repo → Settings → Secrets and variables → Actions
+   ```
 
-# On EC2 Server
-sudo apt update
-sudo apt install -y docker.io curl
-sudo systemctl start docker
-sudo systemctl enable docker
-```
+2. **Add Required Secrets:**
+   ```
+   MONGO_URI              = mongodb+srv://username:password@cluster.mongodb.net/student_db
+   STAGING_HOST           = your-staging-server-ip
+   STAGING_USER           = ubuntu
+   STAGING_SSH_KEY        = -----BEGIN OPENSSH PRIVATE KEY-----...
+   STAGING_URL            = https://staging.your-domain.com
+   PRODUCTION_HOST        = your-production-server-ip  
+   PRODUCTION_USER        = ubuntu
+   PRODUCTION_SSH_KEY     = -----BEGIN OPENSSH PRIVATE KEY-----...
+   PRODUCTION_URL         = https://your-domain.com
+   BACKUP_S3_BUCKET       = your-backup-bucket-name
+   ```
 
-## 🚀 Quick Start
+### **Jenkins Credentials Setup**
 
-### 1. Clone Repository
-```bash
-git clone https://github.com/yourusername/flask-jenkins-pipeline.git
-cd flask-jenkins-pipeline
-```
+1. **Navigate to Jenkins Credentials:**
+   ```
+   Jenkins → Manage Jenkins → Manage Credentials
+   ```
 
-### 2. Configure Jenkins
-1. **Install Jenkins** on your server
-2. **Install required plugins**:
-   - Navigate to `Manage Jenkins` → `Manage Plugins`
-   - Install: Pipeline, SSH Agent, Email Extension, Docker Pipeline
-3. **Configure SSH credentials**:
-   - Go to `Manage Jenkins` → `Manage Credentials`
-   - Add SSH private key for EC2 access
-4. **Setup email notifications**:
-   - Configure SMTP settings in `Manage Jenkins` → `Configure System`
-
-### 3. Create Jenkins Pipeline
-1. **New Item** → **Pipeline**
-2. **Pipeline Script from SCM**:
-   - SCM: Git
-   - Repository URL: `https://github.com/yourusername/flask-jenkins-pipeline.git`
-   - Script Path: `Jenkinsfile`
-
-### 4. Configure Environment Variables
-Update the following in your `Jenkinsfile`:
-```groovy
-environment {
-    SSH_CREDENTIALS_ID = "your-ssh-credential-id"
-    EC2_USER = "ubuntu"
-    EC2_HOST = "your-ec2-ip-address"
-    NOTIFICATION_EMAIL = "your-email@domain.com"
-}
-```
+2. **Add Secret Text Credentials:**
+   ```
+   ID: mongo-uri-secret        | Secret: mongodb+srv://username:password@cluster.mongodb.net/student_db
+   ID: staging-ssh-key         | Secret: [SSH Private Key for Staging]
+   ID: production-ssh-key      | Secret: [SSH Private Key for Production]
+   ```
 
 ## 📁 Project Structure
 
 ```
-flask-jenkins-pipeline/
-├── 📄 README.md                 # Project documentation
-├── 📄 Jenkinsfile              # Jenkins pipeline configuration
-├── 📄 Dockerfile               # Docker container configuration
-├── 📄 requirements.txt         # Python dependencies
-├── 🐍 app.py                   # Flask application
-├── 🧪 test_app.py              # Unit tests
-├── 📸 screenshots/             # Pipeline execution screenshots
-│   ├── pipeline-overview.png
-│   ├── build-success.png
-│   ├── deployment-logs.png
-│   └── email-notifications.png
-└── 📚 docs/                    # Additional documentation
-    ├── setup-guide.md
-    └── troubleshooting.md
+student-management-cicd/
+├── 📄 README.md                    # This documentation
+├── 📄 app.py                       # Flask application with secret handling
+├── 📄 test_app.py                  # Comprehensive unit tests  
+├── 📄 requirements.txt             # Python dependencies
+├── 📄 Dockerfile                   # Container configuration
+├── 📄 Jenkinsfile                  # Jenkins pipeline definition
+├── 📁 .github/
+│   └── 📁 workflows/
+│       └── 📄 flask-cicd.yml       # GitHub Actions workflow
+└── 📁 screenshots/                 # Pipeline execution screenshots
+    ├── jenkins-pipeline.png
+    ├── github-actions.png
+    └── deployment-success.png
 ```
 
-## 🔄 Pipeline Stages
+## 🚀 Getting Started
 
-### Stage 1: 🔍 Environment Validation
-- Validates build environment
-- Installs Docker if missing
-- Checks required files existence
-- Ensures all dependencies are available
+### **Prerequisites**
+- Python 3.8+
+- Docker 20.10+
+- MongoDB Atlas account (or local MongoDB)
+- Jenkins server (for Jenkins pipeline)
+- GitHub repository (for GitHub Actions)
 
-### Stage 2: 📦 Install Dependencies
-- Creates Python virtual environment
-- Installs required packages from `requirements.txt`
-- Upgrades pip to latest version
+### **Local Development Setup**
 
-### Stage 3: 🧪 Run Tests
-- Executes unit tests using pytest
-- Generates test reports
-- Continues on test failures with warnings
+1. **Clone Repository:**
+   ```bash
+   git clone https://github.com/yourusername/student-management-cicd.git
+   cd student-management-cicd
+   ```
 
-### Stage 4: 🐳 Build Docker Image
-- Builds Docker image for the application
-- Implements retry logic for failed builds
-- Verifies image creation success
+2. **Set Environment Variable:**
+   ```bash
+   export MONGO_URI="mongodb://localhost:27017/"
+   # Or for MongoDB Atlas:
+   export MONGO_URI="mongodb+srv://username:password@cluster.mongodb.net/student_db"
+   ```
 
-### Stage 5: 🚀 Deploy to EC2
-- Tests SSH connectivity to EC2
-- Sets up EC2 environment (installs Docker if needed)
-- Copies application files
-- Deploys containerized application
-- Configures container with restart policies
+3. **Install Dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-### Stage 6: 🏥 Health Check
-- Performs application health verification
-- Tests HTTP endpoints
-- Implements retry logic with 5 attempts
-- Collects debug information on failures
+4. **Run Tests:**
+   ```bash
+   pytest test_app.py -v
+   ```
 
-## 📧 Email Notifications
+5. **Start Application:**
+   ```bash
+   python app.py
+   ```
 
-The pipeline sends beautifully formatted emails for different build statuses:
+6. **Visit Application:**
+   ```
+   http://localhost:5000
+   ```
 
-### ✅ Success Notifications
-- **Professional ASCII borders**
-- **Complete build details and timestamps**
-- **Direct application links**
-- **Quick access links to Jenkins**
+## 🔄 Jenkins CI/CD Pipeline
 
-### ❌ Failure Notifications
-- **Detailed troubleshooting guide**
-- **Common failure points checklist**
-- **Step-by-step debug instructions**
-- **Multiple investigation links**
+### **Pipeline Stages:**
 
-### ⚠️ Unstable Notifications
-- **Test failure warnings**
-- **Application status verification**
-- **Review requirements**
+1. **🔍 Environment Validation**
+   - Validates build environment
+   - Installs missing dependencies
+   - Checks required files
 
-## 🛠️ Configuration
+2. **📦 Install Dependencies**
+   - Creates Python virtual environment
+   - Installs packages from requirements.txt
 
-### Jenkins Pipeline Configuration
-```groovy
-// Essential environment variables
-environment {
-    SSH_CREDENTIALS_ID = "ec2-ssh-key"           # SSH credential ID
-    EC2_USER = "ubuntu"                          # EC2 username
-    EC2_HOST = "3.110.222.41"                   # EC2 IP address
-    APP_DIR = "/home/ubuntu/student-app"         # Application directory
-    DOCKER_IMAGE = "student-app"                 # Docker image name
-    CONTAINER_NAME = "student-app-container"     # Container name
-    APP_PORT = "5000"                           # Application port
-    NOTIFICATION_EMAIL = "your-email@gmail.com"  # Notification email
-}
-```
+3. **🧪 Run Tests**
+   - Executes pytest with coverage
+   - Uses MongoDB secret from Jenkins credentials
 
-### EC2 Security Group Settings
-Ensure your EC2 security group allows:
-- **SSH (Port 22)**: For Jenkins deployment access
-- **HTTP (Port 5000)**: For application access
-- **HTTPS (Port 443)**: Optional, for secure access
+4. **🐳 Build Docker Image**
+   - Builds containerized application
+   - Implements build retry logic
 
-### Email SMTP Configuration
-Configure in Jenkins → Manage Jenkins → Configure System:
-```
-SMTP Server: smtp.gmail.com
-SMTP Port: 587
-Use SMTP Authentication: ✓
-Username: your-email@gmail.com
-Password: your-app-password
-Use SSL: ✓
-```
+5. **🚀 Deploy to EC2**
+   - Secure SSH deployment
+   - Uses Jenkins credentials for secrets
+   - Container deployment with health checks
 
-## 🧪 Testing
+6. **🏥 Health Check**
+   - Application health verification
+   - HTTP endpoint testing
+   - Failure diagnostics
 
-### Local Testing
+### **Jenkins Configuration:**
+
+1. **Create Pipeline Job:**
+   ```
+   New Item → Pipeline → Pipeline script from SCM
+   ```
+
+2. **Configure Repository:**
+   ```
+   SCM: Git
+   Repository URL: https://github.com/yourusername/student-management-cicd.git
+   Script Path: Jenkinsfile
+   ```
+
+3. **Set Build Triggers:**
+   ```
+   ✓ GitHub hook trigger for GITScm polling
+   ✓ Poll SCM: H/5 * * * *
+   ```
+
+## ⚡ GitHub Actions Workflow
+
+### **Workflow Jobs:**
+
+1. **🧪 Build & Test**
+   - Multi-Python version testing (3.9, 3.10, 3.11)
+   - Uses `${{ secrets.MONGO_URI }}` for secure database access
+   - Code coverage reporting
+
+2. **🔒 Security Scan**
+   - Bandit security analysis
+   - Dependency vulnerability checking
+   - SARIF report generation
+
+3. **🚀 Deploy to Staging**
+   - Triggered on `staging` branch push
+   - Uses GitHub secrets for secure deployment
+   - Automated health verification
+
+4. **🌟 Deploy to Production**
+   - Triggered on release publication
+   - Production-grade deployment
+   - Comprehensive monitoring setup
+
+### **Workflow Features:**
+
+- **Secret Integration**: All sensitive data via GitHub Secrets
+- **Multi-Environment**: Separate staging and production deployments
+- **Security First**: Vulnerability scanning and secure SSH
+- **Health Monitoring**: Automated health checks with retries
+- **Artifact Management**: Test reports and coverage data
+
+## 🧪 Testing Strategy
+
+### **Test Categories:**
+
+1. **Unit Tests**
+   - Flask endpoint testing
+   - Database operation validation
+   - Error handling verification
+
+2. **Integration Tests**
+   - MongoDB connection testing
+   - Secret configuration validation
+   - Health endpoint verification
+
+3. **Security Tests**
+   - Bandit static analysis
+   - Dependency vulnerability scanning
+
+### **Running Tests:**
+
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run tests
+# Run all tests
 pytest test_app.py -v
 
-# Run application locally
-python app.py
+# Run with coverage
+pytest test_app.py --cov=app --cov-report=html
+
+# Run specific test
+pytest test_app.py::test_health_check -v
 ```
 
-### Pipeline Testing
-1. **Push changes** to trigger pipeline
-2. **Monitor Jenkins console** for real-time logs
-3. **Check email notifications** for build status
-4. **Verify application** at `http://your-ec2-ip:5000`
+## 🚀 Deployment Environments
 
-## 📸 Screenshots
+### **Staging Environment**
+- **Purpose**: Pre-production testing
+- **Trigger**: Push to `staging` branch  
+- **URL**: `${{ secrets.STAGING_URL }}`
+- **Database**: Staging MongoDB instance
 
-### Pipeline Overview
-![Pipeline Overview](screenshots/pipeline-overview.png)
+### **Production Environment**
+- **Purpose**: Live application
+- **Trigger**: Release publication
+- **URL**: `${{ secrets.PRODUCTION_URL }}`
+- **Database**: Production MongoDB cluster
 
-### Successful Build
-![Build Success](screenshots/build-success.png)
+## 🔧 API Endpoints
 
-### Deployment Logs
-![Deployment Logs](screenshots/deployment-logs.png)
+### **Core Endpoints:**
+```
+GET  /                     # Welcome message and system info
+GET  /health              # Health check for monitoring
+GET  /students            # Get all students
+POST /students            # Add new student
+GET  /students/{id}       # Get student by ID
+DELETE /students/{id}     # Delete student
+GET  /students/name/{name} # Search students by name
+```
 
-### Email Notifications
-![Email Notifications](screenshots/email-notifications.png)
+### **Example Usage:**
+```bash
+# Health check
+curl http://localhost:5000/health
+
+# Add student
+curl -X POST http://localhost:5000/students \
+  -H "Content-Type: application/json" \
+  -d '{"name": "John Doe", "age": 25}'
+
+# Get all students  
+curl http://localhost:5000/students
+```
+
+## 📧 Notifications
+
+### **Jenkins Email Notifications:**
+- **Success**: Build completion with deployment URL
+- **Failure**: Detailed troubleshooting information  
+- **Unstable**: Test warnings and review requirements
+
+### **GitHub Actions Notifications:**
+- **Built-in**: GitHub UI notifications
+- **Optional**: Slack/Teams integration via webhooks
 
 ## 🔧 Troubleshooting
 
-### Common Issues and Solutions
+### **Common Issues:**
 
-#### 🚨 SSH Connection Failed
+#### **MongoDB Connection Failed**
 ```bash
-# Check SSH connectivity
-ssh -i your-key.pem ubuntu@your-ec2-ip
+# Check secret configuration
+echo $MONGO_URI
 
-# Verify security group settings
-# Ensure port 22 is open for your IP
+# Test connection manually
+python -c "from pymongo import MongoClient; MongoClient('$MONGO_URI').admin.command('ping')"
 ```
 
-#### 🚨 Docker Build Failed
+#### **Jenkins Pipeline Fails**
 ```bash
-# Check Docker service
-sudo systemctl status docker
-
-# Free up disk space
-docker system prune -f
-
-# Check Dockerfile syntax
-docker build -t test-image .
-```
-
-#### 🚨 Application Not Responding
-```bash
-# Check container status
-docker ps -a
-
-# View container logs
-docker logs student-app-container
-
-# Check port availability
-sudo netstat -tlnp | grep :5000
-```
-
-#### 🚨 Email Notifications Not Working
-1. **Verify SMTP settings** in Jenkins configuration
-2. **Check email credentials** and app passwords
-3. **Test email configuration** using Jenkins built-in test
-4. **Review firewall settings** for SMTP ports
-
-### Debug Commands
-```bash
-# Jenkins server debugging
-sudo systemctl status jenkins
+# Check Jenkins logs
 sudo tail -f /var/log/jenkins/jenkins.log
 
-# EC2 server debugging
-docker ps -a
-docker logs student-app-container
-sudo df -h
-sudo free -h
-
-# Network debugging
-curl -I http://your-ec2-ip:5000
-telnet your-ec2-ip 5000
+# Verify credentials
+Jenkins → Manage Jenkins → Manage Credentials
 ```
 
-## 📈 Monitoring and Maintenance
+#### **GitHub Actions Secret Issues**
+```bash
+# Verify secrets are set
+Repository → Settings → Secrets and variables → Actions
 
-### Regular Maintenance Tasks
-- **Monitor disk space** on Jenkins and EC2 servers
-- **Update Docker images** regularly for security patches
-- **Review and rotate SSH keys** periodically
-- **Clean up old Jenkins builds** to save space
-- **Update Python dependencies** for security fixes
+# Check workflow logs
+Actions tab → Select failed workflow → View logs
+```
 
-### Performance Optimization
-- **Use Docker multi-stage builds** to reduce image size
-- **Implement caching strategies** for faster builds
-- **Optimize test execution** with parallel testing
-- **Monitor resource usage** and scale as needed
+### **Debug Commands:**
+```bash
+# Application health
+curl -v http://localhost:5000/health
+
+# Container logs
+docker logs student-app-container
+
+# Database connection test
+python -c "import os; from app import connect_to_mongodb; print(connect_to_mongodb())"
+```
+
+## 📊 Monitoring & Maintenance
+
+### **Health Monitoring:**
+- **Endpoint**: `/health` returns system status
+- **Database**: Connection status reporting
+- **Secrets**: Configuration validation
+
+### **Log Management:**
+- **Application**: Structured logging with timestamps
+- **Pipeline**: Build and deployment logs
+- **Security**: Audit trails for secret access
+
+### **Regular Maintenance:**
+- **Dependencies**: Monthly security updates
+- **Secrets**: Quarterly rotation
+- **Backups**: Daily automated backups
+- **Monitoring**: Performance metrics review
 
 ## 🤝 Contributing
 
 1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
+2. **Create** feature branch: `git checkout -b feature/amazing-feature`
+3. **Add tests** for new functionality
+4. **Commit** changes: `git commit -m 'Add amazing feature'`
+5. **Push** to branch: `git push origin feature/amazing-feature`
+6. **Open** Pull Request
 
-### Contribution Guidelines
-- Follow **PEP 8** for Python code style
-- Add **unit tests** for new features
-- Update **documentation** for any changes
-- Test the **complete pipeline** before submitting
+### **Contribution Guidelines:**
+- Follow PEP 8 Python style guide
+- Add unit tests for all new features
+- Update documentation for changes
+- Test both Jenkins and GitHub Actions pipelines
 
 ## 📜 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see [LICENSE](LICENSE) file.
 
 ## 👥 Authors
 
@@ -349,22 +392,23 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **Jenkins Community** for excellent documentation
-- **Flask Team** for the amazing web framework
-- **Docker** for containerization technology
-- **AWS** for cloud infrastructure
+- **Flask Team** - Web framework
+- **MongoDB** - Database platform  
+- **Jenkins Community** - CI/CD platform
+- **GitHub** - Repository and Actions platform
+- **Docker** - Containerization platform
 
 ## 📞 Support
 
-For support and questions:
+For questions and support:
 - **Email**: your-email@domain.com
-- **Issues**: [GitHub Issues](https://github.com/yourusername/flask-jenkins-pipeline/issues)
-- **Documentation**: [Project Wiki](https://github.com/yourusername/flask-jenkins-pipeline/wiki)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/student-management-cicd/issues)
+- **Documentation**: [Project Wiki](https://github.com/yourusername/student-management-cicd/wiki)
 
 ---
 
-⭐ **Star this repository** if you found it helpful!
+⭐ **Star this repository** if it helped you with your CI/CD learning!
 
-🐛 **Found a bug?** [Report it here](https://github.com/yourusername/flask-jenkins-pipeline/issues)
+🐛 **Found a bug?** [Report it here](https://github.com/yourusername/student-management-cicd/issues)
 
-💡 **Have suggestions?** [Start a discussion](https://github.com/yourusername/flask-jenkins-pipeline/discussions)
+💡 **Have suggestions?** [Start a discussion](https://github.com/yourusername/student-management-cicd/discussions)
