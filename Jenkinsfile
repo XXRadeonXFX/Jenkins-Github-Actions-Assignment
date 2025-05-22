@@ -6,6 +6,7 @@ pipeline {
         EC2_USER = "ubuntu"
         EC2_HOST = "3.110.222.41"
         HOME_DIR = "/home/ubuntu"
+        APP_DIR = "/home/ubuntu/student-app"
     }
 
     stages {
@@ -39,14 +40,17 @@ pipeline {
             steps {
                 sshagent([env.SSH_CREDENTIALS_ID]) {
                     sh '''
-                    echo "🔁 Copying files to EC2..."
+                    echo "🔁 Creating app directory on EC2..."
+                    ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} "mkdir -p ${APP_DIR}"
+
+                    echo "📤 Copying files to EC2..."
                     scp -o StrictHostKeyChecking=no \
                         Dockerfile Jenkinsfile README.md app.py requirements.txt test_app.py \
-                        ${EC2_USER}@${EC2_HOST}:${HOME_DIR}/student-app
+                        ${EC2_USER}@${EC2_HOST}:${APP_DIR}
 
                     echo "🚀 Running app on EC2..."
                     ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
-                        cd ${HOME_DIR}/student-app
+                        cd ${APP_DIR}
                         docker stop student-app-container || true
                         docker rm student-app-container || true
                         docker build -t student-app .
