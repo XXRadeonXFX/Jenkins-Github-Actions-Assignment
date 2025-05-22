@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from pymongo import MongoClient
 from bson import ObjectId
 from bson.regex import Regex
+import os
 
 # Load Mongo URI from environment
 MONGO_URI = os.getenv("MONGO_URI")
