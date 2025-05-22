@@ -3,11 +3,14 @@ from pymongo import MongoClient
 from bson import ObjectId
 from bson.regex import Regex
 
+# Load Mongo URI from environment
+MONGO_URI = os.getenv("MONGO_URI")
+
 # Initialize Flask app
 app = Flask(__name__)
 
-# Connect to MongoDB
-client = MongoClient("MONGO_URI")  # Replace with your MongoDB URI
+# Connect to MongoDB using secret URI
+client = MongoClient(MONGO_URI)
 db = client["student_db"]  # Database name
 students_collection = db["students"]  # Collection name
 
