@@ -194,6 +194,8 @@ student-management-cicd/
    ```
 
 ## ⚡ GitHub Actions Workflow
+![GitHub Actions Workflow](screenshots/github-actions.png)
+*GitHub Actions workflow with parallel jobs and secret management*
 
 ### **Workflow Jobs:**
 
