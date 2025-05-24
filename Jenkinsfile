@@ -380,7 +380,7 @@ def deployApplication() {
                 --name ''' + env.CONTAINER_NAME + ''' \
                 --restart unless-stopped \
                 -p ''' + env.APP_PORT + ''':''' + env.APP_PORT + ''' \
-                -e MONGO_URI="$PRINCE_MONGO_URI" \
+                -e MONGO_URI="$MONGO_URI" \
                 ''' + env.DOCKER_IMAGE + '''
             
             # Verify container started
