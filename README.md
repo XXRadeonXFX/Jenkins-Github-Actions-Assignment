@@ -152,6 +152,7 @@ student-management-cicd/
     ├── jenkins-pipeline.png
     ├── github-actions.png
     └── deployment-success.png
+    └── email-test.png
 ```
 
 ## 🚀 Getting Started
@@ -167,8 +168,8 @@ student-management-cicd/
 
 1. **Clone Repository:**
    ```bash
-   git clone https://github.com/yourusername/student-management-cicd.git
-   cd student-management-cicd
+   git clone https://github.com/XXRadeonXFX/Jenkins-Github-Actions-Assignment.git
+   cd Jenkins-Github-Actions-Assignment
    ```
 
 2. **Set Environment Variable:**
