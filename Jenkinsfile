@@ -3,8 +3,8 @@ pipeline {
 
     options {
         timeout(time: 30, unit: 'MINUTES')
-        retry(2)
-        skipDefaultCheckout()
+        retry(1)
+        // skipDefaultCheckout()
         buildDiscarder(logRotator(numToKeepStr: '10'))
         timestamps()
     }
