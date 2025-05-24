@@ -251,7 +251,6 @@ student-management-cicd/
 3. **Set Build Triggers:**
    ```
    ✓ GitHub hook trigger for GITScm polling
-   ✓ Poll SCM: H/5 * * * *
    ```
 
 ## ⚡ GitHub Actions Workflow
