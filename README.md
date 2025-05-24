@@ -233,6 +233,8 @@ student-management-cicd/
    - Failure diagnostics
 
 ### **Jenkins Configuration:**
+![Jenkins Pipeline Configuration](screenshots/jenkins-pipeline-config.png)
+*Jenkins pipeline configuration to be followed in order to push make trigger working*
 
 1. **Create Pipeline Job:**
    ```
