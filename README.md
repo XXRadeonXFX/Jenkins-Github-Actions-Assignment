@@ -248,7 +248,7 @@ student-management-cicd/
 2. **Configure Repository:**
    ```
    SCM: Git
-   Repository URL: https://github.com/yourusername/student-management-cicd.git
+   Repository URL: https://github.com/XXRadeonXFX/Jenkins-Github-Actions-Assignment.git
    Script Path: Jenkinsfile
    ```
 
@@ -256,7 +256,6 @@ student-management-cicd/
    ```
    ✓ GitHub hook trigger for GITScm polling
    ```
----
 
 
 # 🚀 Student App Deployment on EC2
@@ -302,8 +301,8 @@ http://<ec2-ip>:5000/students
 http://<ec2-ip>:5000/health
 ``` 
 
-
-## ⚡ GitHub Actions Workflow
+---
+# ⚡ GitHub Actions Workflow
 ![GitHub Actions Workflow](screenshots/github-actions.png)
 *GitHub Actions workflow with parallel jobs and secret management*
 
