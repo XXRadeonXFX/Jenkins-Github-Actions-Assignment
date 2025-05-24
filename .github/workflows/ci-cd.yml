@@ -1,4 +1,4 @@
-name: Flask CI/CD
+name: Flask CI/CD with Container Registry
 
 on:
   push:
@@ -7,6 +7,10 @@ on:
     branches: [main, staging]
   release:
     types: [created]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-test:
@@ -41,23 +45,33 @@ jobs:
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
 
-      - name: 🏗️ Build optimized Docker image
-        run: |
-          echo "Building optimized Docker image..."
-          docker build --compress -t student-management-app:${{ github.sha }} .
-          echo "Docker image built successfully"
-
-      - name: 💾 Save Docker image with better compression
-        run: |
-          echo "Creating optimized Docker image archive..."
-          docker save student-management-app:${{ github.sha }} | gzip -1 > app.tar.gz
-          echo "Docker image size: $(du -h app.tar.gz)"
-
-      - name: 📤 Upload Docker image artifact
-        uses: actions/upload-artifact@v4
+      - name: 🔑 Log in to Container Registry
+        uses: docker/login-action@v3
         with:
-          name: docker-image
-          path: app.tar.gz
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏗️ Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: 🚀 Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   code-quality:
     runs-on: ubuntu-latest
@@ -119,11 +133,6 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
-      - name: 📥 Download Docker image
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image
-
       - name: 🔧 Setup SSH key file
         run: |
           mkdir -p ~/.ssh
@@ -131,98 +140,32 @@ jobs:
           echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/staging_key
           chmod 600 ~/.ssh/staging_key
 
-      - name: 🔑 Configure optimized SSH
+      - name: 🔑 Configure SSH
         run: |
           # Add host to known_hosts
           ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
           
-          # Create optimized SSH config for faster transfers
+          # Create SSH config
           cat > ~/.ssh/config << 'SSH_CONFIG'
           Host staging
             HostName ${{ secrets.STAGING_HOST }}
             User ${{ secrets.STAGING_USER }}
             IdentityFile ~/.ssh/staging_key
             StrictHostKeyChecking no
-            ConnectTimeout 10
-            ServerAliveInterval 30
-            ServerAliveCountMax 3
-            TCPKeepAlive yes
-            Compression no
-            ControlMaster auto
-            ControlPath ~/.ssh/control-%r@%h:%p
-            ControlPersist 600
+            ConnectTimeout 30
           SSH_CONFIG
           chmod 600 ~/.ssh/config
 
       - name: 🧪 Test SSH Connection
         run: |
-          echo "Testing optimized SSH connection..."
+          echo "Testing SSH connection..."
           ssh staging "echo 'SSH connection successful'; whoami; uptime"
 
-      - name: 🚀 Smart File Transfer (with fallbacks)
-        timeout-minutes: 5
-        run: |
-          echo "Starting smart file transfer..."
-          
-          # Check local file size
-          echo "Local Docker image size: $(du -h app.tar.gz)"
-          
-          # Prepare staging directory
-          ssh staging "mkdir -p /tmp/deployment && rm -f /tmp/deployment/*"
-          
-          # Method 1: Try optimized SCP with progress
-          echo "Attempting Method 1: Optimized SCP..."
-          if timeout 180 scp -v -o Compression=no -o BatchMode=yes -o ConnectTimeout=30 app.tar.gz staging:/tmp/deployment/; then
-            echo "✅ SCP transfer successful!"
-            scp -o Compression=no requirements.txt app.py staging:/tmp/deployment/
-          else
-            echo "⚠️ SCP failed or too slow, trying Method 2: Chunked transfer..."
-            
-            # Method 2: Split file and transfer in chunks
-            echo "Splitting file into smaller chunks..."
-            split -b 10M app.tar.gz app_chunk_
-            
-            echo "Transferring chunks..."
-            for chunk in app_chunk_*; do
-              echo "Transferring $chunk..."
-              if ! timeout 60 scp -o Compression=no "$chunk" staging:/tmp/deployment/; then
-                echo "❌ Chunk transfer failed: $chunk"
-                exit 1
-              fi
-            done
-            
-            # Reassemble on server
-            echo "Reassembling file on server..."
-            ssh staging "cd /tmp/deployment && cat app_chunk_* > app.tar.gz && rm app_chunk_*"
-            
-            # Transfer other files
-            scp -o Compression=no requirements.txt app.py staging:/tmp/deployment/
-            echo "✅ Chunked transfer completed!"
-          fi
-          
-          # Verify transfer
-          echo "Verifying files on staging server..."
-          ssh staging "ls -lh /tmp/deployment/ && echo 'Transfer completed successfully'"
-          
-          # Verify file integrity
-          echo "Verifying file integrity..."
-          LOCAL_SIZE=$(stat -f%z app.tar.gz 2>/dev/null || stat -c%s app.tar.gz)
-          REMOTE_SIZE=$(ssh staging "stat -f%z /tmp/deployment/app.tar.gz 2>/dev/null || stat -c%s /tmp/deployment/app.tar.gz")
-          
-          if [ "$LOCAL_SIZE" = "$REMOTE_SIZE" ]; then
-            echo "✅ File integrity verified (Size: $LOCAL_SIZE bytes)"
-          else
-            echo "❌ File size mismatch! Local: $LOCAL_SIZE, Remote: $REMOTE_SIZE"
-            exit 1
-          fi
-          
-          echo "✅ Files copied!"
-
-      - name: 🐳 Install and setup Docker with permissions
+      - name: 🐳 Setup Docker and Registry on staging
         timeout-minutes: 3
         run: |
-          echo "Setting up Docker with proper permissions..."
+          echo "Setting up Docker and container registry access..."
           
           ssh staging << 'EOF'
             set -e
@@ -234,50 +177,44 @@ jobs:
               sudo sh get-docker.sh
               echo "Docker installed successfully"
             else
-              echo "Docker already installed: $(docker --version 2>/dev/null || echo 'version check failed')"
+              echo "Docker already installed: $(docker --version)"
             fi
             
             # Ensure Docker service is running
             sudo systemctl start docker
             sudo systemctl enable docker
             
-            # Add user to docker group and fix permissions
+            # Add user to docker group
             sudo usermod -aG docker $USER
             
-            echo "Docker setup completed. Will use 'sudo docker' for Docker commands to avoid permission issues."
+            echo "Docker setup completed."
           EOF
 
-      - name: 🚀 Deploy to Staging with fixed permissions
+      - name: 🚀 Deploy to Staging via Container Registry
         timeout-minutes: 5
         run: |
-          echo "Deploying to staging environment..."
+          echo "Deploying to staging using container registry..."
           
-          ssh staging << 'EOF'
+          # Get the image tag for this branch
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging-${{ github.sha }}"
+          echo "Deploying image: $IMAGE_TAG"
+          
+          ssh staging << EOF
             set -e
             
             echo "=== Starting staging deployment ==="
-            cd /tmp/deployment
+            
+            # Login to GitHub Container Registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             
             # Stop existing application
             echo "Stopping existing containers..."
-            sudo pkill -f "python.*app.py" || true
             sudo docker stop student-app-staging 2>/dev/null || true
             sudo docker rm student-app-staging 2>/dev/null || true
             
-            # Load new Docker image
-            echo "Loading Docker image..."
-            if [ -f app.tar.gz ]; then
-              echo "Decompressing and loading Docker image..."
-              gunzip -t app.tar.gz && echo "✅ Docker image file is valid"
-              gunzip -c app.tar.gz | sudo docker load
-              echo "✅ Docker image loaded successfully"
-            else
-              echo "❌ Error: app.tar.gz not found"
-              exit 1
-            fi
-            
-            # Verify Docker image
-            sudo docker images | grep student-management-app || exit 1
+            # Pull the new image (much faster than file transfer!)
+            echo "Pulling Docker image from registry..."
+            sudo docker pull $IMAGE_TAG
             
             # Run new container
             echo "Starting new container..."
@@ -286,7 +223,7 @@ jobs:
               --restart unless-stopped \
               -p 5000:5000 \
               -e MONGO_URI='${{ secrets.MONGO_URI }}' \
-              student-management-app:${{ github.sha }}
+              $IMAGE_TAG
             
             # Wait for application to start
             echo "Waiting for application to start..."
@@ -303,14 +240,18 @@ jobs:
               exit 1
             fi
             
+            # Cleanup old images (keep last 3)
+            echo "Cleaning up old images..."
+            sudo docker images ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} --format "table {{.Tag}}\t{{.ID}}" | grep staging | tail -n +4 | awk '{print \$2}' | xargs -r sudo docker rmi || true
+            
             echo "✅ Staging deployment completed!"
           EOF
 
       - name: 🧪 Run staging health check
-        timeout-minutes: 3
+        timeout-minutes: 2
         run: |
           echo "Running health check on staging..."
-          max_attempts=10
+          max_attempts=8
           attempt=1
           
           while [ $attempt -le $max_attempts ]; do
@@ -366,6 +307,7 @@ jobs:
           echo "✅ Staging deployment completed successfully!"
           echo "🌐 Staging URL: http://${{ secrets.STAGING_HOST }}:5000"
           echo "🏥 Health URL: http://${{ secrets.STAGING_HOST }}:5000/health"
+          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging-${{ github.sha }}"
           echo "🧪 Staging environment is ready for testing"
 
   deploy-production:
@@ -378,11 +320,6 @@ jobs:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
 
-      - name: 📥 Download Docker image
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image
-
       - name: 🔧 Setup SSH key file
         run: |
           mkdir -p ~/.ssh
@@ -390,27 +327,20 @@ jobs:
           echo "${{ secrets.PRODUCTION_SSH_KEY }}" > ~/.ssh/production_key
           chmod 600 ~/.ssh/production_key
 
-      - name: 🔑 Configure optimized SSH for production
+      - name: 🔑 Configure SSH for production
         run: |
           # Add host to known_hosts
           ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
           
-          # Create optimized SSH config
+          # Create SSH config
           cat > ~/.ssh/config << 'SSH_CONFIG'
           Host production
             HostName ${{ secrets.PRODUCTION_HOST }}
             User ${{ secrets.PRODUCTION_USER }}
             IdentityFile ~/.ssh/production_key
             StrictHostKeyChecking no
-            ConnectTimeout 10
-            ServerAliveInterval 30
-            ServerAliveCountMax 3
-            TCPKeepAlive yes
-            Compression no
-            ControlMaster auto
-            ControlPath ~/.ssh/control-%r@%h:%p
-            ControlPersist 600
+            ConnectTimeout 30
           SSH_CONFIG
           chmod 600 ~/.ssh/config
 
@@ -418,69 +348,6 @@ jobs:
         run: |
           echo "Testing SSH connection to production..."
           ssh production "echo 'SSH connection successful'; whoami; uptime"
-
-      - name: 🚀 Smart File Transfer to Production
-        timeout-minutes: 8
-        run: |
-          echo "Starting smart file transfer to production..."
-          
-          # Check local file size
-          echo "Local Docker image size: $(du -h app.tar.gz)"
-          
-          # Test network speed first
-          echo "Testing network connection..."
-          ssh production "curl -s -w 'Download speed: %{speed_download} bytes/sec\n' -o /dev/null http://speedtest.ftp.otenet.gr/files/test1Mb.db || echo 'Speed test failed, continuing...'"
-          
-          # Prepare production directory
-          ssh production "mkdir -p /tmp/deployment && rm -f /tmp/deployment/*"
-          
-          # Method 1: Try optimized SCP with progress
-          echo "Attempting Method 1: Optimized SCP..."
-          if timeout 300 scp -v -o Compression=no -o BatchMode=yes -o ConnectTimeout=30 app.tar.gz production:/tmp/deployment/; then
-            echo "✅ SCP transfer successful!"
-            scp -o Compression=no requirements.txt app.py production:/tmp/deployment/
-          else
-            echo "⚠️ SCP failed or too slow, trying Method 2: Chunked transfer..."
-            
-            # Method 2: Split file and transfer in chunks
-            echo "Splitting file into smaller chunks..."
-            split -b 10M app.tar.gz app_chunk_
-            
-            echo "Transferring chunks..."
-            for chunk in app_chunk_*; do
-              echo "Transferring $chunk..."
-              if ! timeout 60 scp -o Compression=no "$chunk" production:/tmp/deployment/; then
-                echo "❌ Chunk transfer failed: $chunk"
-                exit 1
-              fi
-            done
-            
-            # Reassemble on server
-            echo "Reassembling file on server..."
-            ssh production "cd /tmp/deployment && cat app_chunk_* > app.tar.gz && rm app_chunk_*"
-            
-            # Transfer other files
-            scp -o Compression=no requirements.txt app.py production:/tmp/deployment/
-            echo "✅ Chunked transfer completed!"
-          fi
-          
-          # Verify transfer
-          echo "Verifying files on production server..."
-          ssh production "ls -lh /tmp/deployment/ && echo 'Transfer completed successfully'"
-          
-          # Verify file integrity
-          echo "Verifying file integrity..."
-          LOCAL_SIZE=$(stat -f%z app.tar.gz 2>/dev/null || stat -c%s app.tar.gz)
-          REMOTE_SIZE=$(ssh production "stat -f%z /tmp/deployment/app.tar.gz 2>/dev/null || stat -c%s /tmp/deployment/app.tar.gz")
-          
-          if [ "$LOCAL_SIZE" = "$REMOTE_SIZE" ]; then
-            echo "✅ File integrity verified (Size: $LOCAL_SIZE bytes)"
-          else
-            echo "❌ File size mismatch! Local: $LOCAL_SIZE, Remote: $REMOTE_SIZE"
-            exit 1
-          fi
-          
-          echo "✅ Files copied to production!"
 
       - name: 🐳 Setup Docker on production
         timeout-minutes: 3
@@ -510,21 +377,28 @@ jobs:
             echo "Docker setup completed for production."
           EOF
 
-      - name: 🚀 Deploy to Production
+      - name: 🚀 Deploy to Production via Container Registry
         timeout-minutes: 7
         run: |
-          echo "Deploying to production environment..."
+          echo "Deploying to production using container registry..."
           
-          ssh production << 'EOF'
+          # Get the image tag for this release
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-${{ github.sha }}"
+          echo "Deploying image: $IMAGE_TAG"
+          
+          ssh production << EOF
             set -e
             
             echo "=== Starting production deployment ==="
-            cd /tmp/deployment
+            
+            # Login to GitHub Container Registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
             
             # Create backup of current deployment
             if sudo docker ps | grep student-app-production; then
               echo "Creating backup of current deployment..."
-              sudo docker tag student-management-app:current student-management-app:backup-$(date +%Y%m%d-%H%M%S) 2>/dev/null || true
+              CURRENT_IMAGE=\$(sudo docker inspect student-app-production --format='{{.Config.Image}}')
+              sudo docker tag \$CURRENT_IMAGE ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:backup-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true
             fi
             
             # Stop existing application gracefully
@@ -532,23 +406,12 @@ jobs:
             sudo docker stop student-app-production 2>/dev/null || true
             sudo docker rm student-app-production 2>/dev/null || true
             
-            # Load new Docker image
-            echo "Loading Docker image..."
-            if [ -f app.tar.gz ]; then
-              echo "Decompressing and loading Docker image..."
-              gunzip -t app.tar.gz && echo "✅ Docker image file is valid"
-              gunzip -c app.tar.gz | sudo docker load
-              echo "✅ Docker image loaded successfully"
-            else
-              echo "❌ Error: app.tar.gz not found"
-              exit 1
-            fi
+            # Pull the new image
+            echo "Pulling Docker image from registry..."
+            sudo docker pull $IMAGE_TAG
             
             # Tag as current version
-            sudo docker tag student-management-app:${{ github.sha }} student-management-app:current
-            
-            # Verify Docker image
-            sudo docker images | grep student-management-app || exit 1
+            sudo docker tag $IMAGE_TAG ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:current
             
             # Run new container
             echo "Starting new container..."
@@ -557,7 +420,7 @@ jobs:
               --restart unless-stopped \
               -p 80:5000 \
               -e MONGO_URI='${{ secrets.MONGO_URI }}' \
-              student-management-app:current
+              $IMAGE_TAG
             
             # Wait for application to start
             echo "Waiting for application to start..."
@@ -573,6 +436,10 @@ jobs:
               sudo docker logs student-app-production || true
               exit 1
             fi
+            
+            # Cleanup old images (keep last 5)
+            echo "Cleaning up old images..."
+            sudo docker images ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} --format "table {{.Tag}}\t{{.ID}}" | grep -E "(main|backup)" | tail -n +6 | awk '{print \$2}' | xargs -r sudo docker rmi || true
             
             echo "✅ Production deployment completed!"
           EOF
@@ -614,7 +481,7 @@ jobs:
               sudo docker rm student-app-production || true
               
               # Find latest backup
-              BACKUP_IMAGE=$(sudo docker images --format 'table {{.Repository}}:{{.Tag}}' | grep backup- | head -n 1)
+              BACKUP_IMAGE=$(sudo docker images --format 'table {{.Repository}}:{{.Tag}}' | grep backup- | head -n 1 | tr -s ' ' | cut -d' ' -f1)
               
               if [ ! -z "$BACKUP_IMAGE" ]; then
                 echo "Restoring backup: $BACKUP_IMAGE"
@@ -693,6 +560,7 @@ jobs:
           echo "📦 Version: ${{ github.event.release.tag_name }}"
           echo "🌐 Production URL: http://${{ secrets.PRODUCTION_HOST }}"
           echo "🏥 Health URL: http://${{ secrets.PRODUCTION_HOST }}/health"
+          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-${{ github.sha }}"
           echo "🚀 Production environment is live and healthy"
 
   cleanup:
