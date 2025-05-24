@@ -10,6 +10,7 @@ pipeline {
         CONTAINER_NAME = "student-app-container"
         APP_PORT = "5000"
         NOTIFICATION_EMAIL = "prince.thakur24051996@gmail.com"
+        MONGO_URI = "PRINCE_MONGO_URI"
     }
     
     stages {
@@ -379,6 +380,7 @@ def deployApplication() {
                 --name ''' + env.CONTAINER_NAME + ''' \
                 --restart unless-stopped \
                 -p ''' + env.APP_PORT + ''':''' + env.APP_PORT + ''' \
+                -e MONGO_URI="$PRINCE_MONGO_URI" \
                 ''' + env.DOCKER_IMAGE + '''
             
             # Verify container started
