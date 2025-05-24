@@ -130,9 +130,8 @@ In your Jenkins dashboard:
 
 2. **Add Secret Text Credentials:**
    ```
-   ID: mongo-uri-secret        | Secret: mongodb+srv://username:password@cluster.mongodb.net/student_db
-   ID: staging-ssh-key         | Secret: [SSH Private Key for Staging]
-   ID: production-ssh-key      | Secret: [SSH Private Key for Production]
+   PRINCE_MONGO_URI       = mongodb+srv://username:password@cluster.mongodb.net/student_db
+   SSH_CREDENTIALS_ID     = "c3b12c2f-9959-46a6-b763-fc4e303082cb"
    ```
 
 ## 📁 Project Structure
