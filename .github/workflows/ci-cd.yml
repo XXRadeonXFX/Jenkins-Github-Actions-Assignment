@@ -573,7 +573,7 @@ jobs:
             echo "❌ Production health check failed after $max_attempts attempts"
             echo "Rolling back deployment..."
             
-            ssh production << 'ROLLBACK_EOF'
+            ssh production 'bash -s' <<'EOF'
               echo "Rolling back to previous version..."
               sg docker -c "docker stop student-app-production || true"
               sg docker -c "docker rm student-app-production || true"
