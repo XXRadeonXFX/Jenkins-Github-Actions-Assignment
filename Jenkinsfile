@@ -384,11 +384,11 @@ def deployApplicationSecure() {
             docker build -t ${DOCKER_IMAGE} .
             
             echo 'Starting new container with MongoDB connection...'
-            docker run -d \
-                --name ${CONTAINER_NAME} \
-                --restart unless-stopped \
-                -p ${APP_PORT}:${APP_PORT} \
-                -e MONGO_URI='${MONGO_URI}' \
+            docker run -d \\
+                --name ${CONTAINER_NAME} \\
+                --restart unless-stopped \\
+                -p ${APP_PORT}:${APP_PORT} \\
+                -e MONGO_URI='${MONGO_URI}' \\
                 ${DOCKER_IMAGE}
             
             # Verify container started
@@ -399,7 +399,7 @@ def deployApplicationSecure() {
                 
                 # Quick MongoDB connection test
                 echo 'Testing MongoDB connection in container...'
-                docker exec ${CONTAINER_NAME} python3 -c "
+                docker exec ${CONTAINER_NAME} python3 -c '
 import os
 print(\"MONGO_URI configured:\", \"Yes\" if os.environ.get(\"MONGO_URI\") else \"No\")
 try:
@@ -411,7 +411,7 @@ except ImportError:
     print(\"WARNING: pymongo not available, skipping connection test\")
 except Exception as e:
     print(\"ERROR: MongoDB connection test failed: \" + str(e))
-" || echo 'MongoDB connection test completed'
+' || echo 'MongoDB connection test completed'
             else
                 echo 'ERROR: Container failed to start'
                 docker logs ${CONTAINER_NAME}
