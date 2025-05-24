@@ -4,7 +4,7 @@ pipeline {
     environment {
         SSH_CREDENTIALS_ID = "c3b12c2f-9959-46a6-b763-fc4e303082cb"
         EC2_USER = "ubuntu"
-        EC2_HOST = "13.201.229.190"
+        EC2_HOST = "13.203.207.84"
         APP_DIR = "/home/ubuntu/student-app"
         DOCKER_IMAGE = "student-app"
         CONTAINER_NAME = "student-app-container"
