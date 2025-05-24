@@ -3,7 +3,7 @@ pipeline {
 
     options {
         timeout(time: 30, unit: 'MINUTES')
-        retry(2)
+        retry(1)
         skipDefaultCheckout()
         buildDiscarder(logRotator(numToKeepStr: '10'))
         timestamps()
@@ -140,7 +140,7 @@ pipeline {
             steps {
                 script {
                     echo "Deploying to EC2 with secure MongoDB connection..."
-                    
+
                     withCredentials([string(credentialsId: 'PRINCE_MONGO_URI', variable: 'MONGO_URI')]) {
                         sshagent([env.SSH_CREDENTIALS_ID]) {
 
@@ -168,7 +168,7 @@ pipeline {
             steps {
                 script {
                     echo "Running comprehensive health checks..."
-                    
+
                     withCredentials([string(credentialsId: 'PRINCE_MONGO_URI', variable: 'MONGO_URI')]) {
                         sshagent([env.SSH_CREDENTIALS_ID]) {
                             retry(2) {
@@ -205,32 +205,32 @@ pipeline {
                                         # Test MongoDB connection
                                         echo '=== MongoDB Connection Test ==='
                                         docker exec ${CONTAINER_NAME} python3 -c '
-                                        import os
-                                        import sys
-                                        try:
-                                            from pymongo import MongoClient
-                                            mongo_uri = os.environ.get(\"MONGO_URI\")
-                                            if not mongo_uri:
-                                                print(\"ERROR: MONGO_URI environment variable not found\")
-                                                sys.exit(1)
+import os
+import sys
+try:
+    from pymongo import MongoClient
+    mongo_uri = os.environ.get(\"MONGO_URI\")
+    if not mongo_uri:
+        print(\"ERROR: MONGO_URI environment variable not found\")
+        sys.exit(1)
     
-                                            print(\"Testing MongoDB connection...\")
-                                            client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
-                                            client.admin.command(\"ping\")
-                                            print(\"SUCCESS: MongoDB connection successful\")
+    print(\"Testing MongoDB connection...\")
+    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+    client.admin.command(\"ping\")
+    print(\"SUCCESS: MongoDB connection successful\")
     
-                                            # Test database access
-                                            db_name = mongo_uri.split(\"/\")[3].split(\"?\")[0] if \"/\" in mongo_uri else \"test\"
-                                            db = client[db_name]
-                                            collections = db.list_collection_names()
-                                            print(\"SUCCESS: Database access successful. Collections: \" + str(len(collections)))
+    # Test database access
+    db_name = mongo_uri.split(\"/\")[3].split(\"?\")[0] if \"/\" in mongo_uri else \"test\"
+    db = client[db_name]
+    collections = db.list_collection_names()
+    print(\"SUCCESS: Database access successful. Collections: \" + str(len(collections)))
     
-                                        except ImportError:
-                                            print(\"WARNING: pymongo not installed, skipping MongoDB connection test\")
-                                        except Exception as e:
-                                            print(\"ERROR: MongoDB connection failed: \" + str(e))
-                                            sys.exit(1)
-                                        ' || exit 1
+except ImportError:
+    print(\"WARNING: pymongo not installed, skipping MongoDB connection test\")
+except Exception as e:
+    print(\"ERROR: MongoDB connection failed: \" + str(e))
+    sys.exit(1)
+' || exit 1
                                         
                                         # Test HTTP endpoint
                                         echo '=== HTTP Endpoint Test ==='
@@ -465,18 +465,18 @@ def deployApplicationSecure() {
                 # Quick MongoDB connection test
                 echo 'Testing MongoDB connection in container...'
                 docker exec ${CONTAINER_NAME} python3 -c '
-            import os
-            print(\"MONGO_URI configured:\", \"Yes\" if os.environ.get(\"MONGO_URI\") else \"No\")
-            try:
-                from pymongo import MongoClient
-                client = MongoClient(os.environ.get(\"MONGO_URI\"), serverSelectionTimeoutMS=3000)
-                client.admin.command(\"ping\")
-                print(\"SUCCESS: MongoDB connection test successful\")
-            except ImportError:
-                print(\"WARNING: pymongo not available, skipping connection test\")
-            except Exception as e:
-                print(\"ERROR: MongoDB connection test failed: \" + str(e))
-            ' || echo 'MongoDB connection test completed'
+import os
+print(\"MONGO_URI configured:\", \"Yes\" if os.environ.get(\"MONGO_URI\") else \"No\")
+try:
+    from pymongo import MongoClient
+    client = MongoClient(os.environ.get(\"MONGO_URI\"), serverSelectionTimeoutMS=3000)
+    client.admin.command(\"ping\")
+    print(\"SUCCESS: MongoDB connection test successful\")
+except ImportError:
+    print(\"WARNING: pymongo not available, skipping connection test\")
+except Exception as e:
+    print(\"ERROR: MongoDB connection test failed: \" + str(e))
+' || echo 'MongoDB connection test completed'
             else
                 echo 'ERROR: Container failed to start'
                 docker logs ${CONTAINER_NAME}
@@ -513,11 +513,11 @@ def collectDebugInfo() {
                         
                         echo '=== MongoDB Connection Test ==='
                         docker exec ${CONTAINER_NAME} python3 -c '
-                        import os
-                        print(\"MONGO_URI present:\", bool(os.environ.get(\"MONGO_URI\")))
-                        if os.environ.get(\"MONGO_URI\"):
-                            print(\"MONGO_URI format:\", os.environ.get(\"MONGO_URI\")[:30] + \"...\")
-                        ' || true
+import os
+print(\"MONGO_URI present:\", bool(os.environ.get(\"MONGO_URI\")))
+if os.environ.get(\"MONGO_URI\"):
+    print(\"MONGO_URI format:\", os.environ.get(\"MONGO_URI\")[:30] + \"...\")
+' || true
                         
                         echo '=== System Resources ==='
                         df -h || true
