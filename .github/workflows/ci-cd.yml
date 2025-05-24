@@ -44,12 +44,14 @@ jobs:
       - name: 🏗️ Build optimized Docker image
         run: |
           echo "Building optimized Docker image..."
+          # Build with optimized compression
           docker build --compress -t student-management-app:${{ github.sha }} .
           echo "Docker image built successfully"
 
       - name: 💾 Save Docker image with better compression
         run: |
           echo "Creating optimized Docker image archive..."
+          # Use better compression ratio vs speed balance
           docker save student-management-app:${{ github.sha }} | gzip -1 > app.tar.gz
           echo "Docker image size: $(du -h app.tar.gz)"
 
@@ -124,25 +126,25 @@ jobs:
         with:
           name: docker-image
 
-      - name: 🔧 Setup SSH key file
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/staging_key
-          chmod 600 ~/.ssh/staging_key
+      - name: 🔑 Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
 
       - name: 🔑 Configure optimized SSH
         run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
           # Add host to known_hosts
           ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
           
           # Create optimized SSH config for faster transfers
-          cat > ~/.ssh/config << 'SSH_CONFIG'
+          cat > ~/.ssh/config << EOF
           Host staging
             HostName ${{ secrets.STAGING_HOST }}
             User ${{ secrets.STAGING_USER }}
-            IdentityFile ~/.ssh/staging_key
             StrictHostKeyChecking no
             ConnectTimeout 10
             ServerAliveInterval 15
@@ -150,7 +152,15 @@ jobs:
             TCPKeepAlive yes
             Compression yes
             CompressionLevel 6
-          SSH_CONFIG
+            BatchMode yes
+            ControlMaster auto
+            ControlPath ~/.ssh/control-%r@%h:%p
+            ControlPersist 600
+            # Optimize for speed
+            Ciphers aes128-ctr,aes192-ctr,aes256-ctr
+            MACs hmac-sha2-256,hmac-sha2-512
+            KexAlgorithms diffie-hellman-group14-sha256,ecdh-sha2-nistp256
+          EOF
           chmod 600 ~/.ssh/config
 
       - name: 🧪 Test SSH Connection
@@ -181,6 +191,17 @@ jobs:
                app.tar.gz requirements.txt app.py \
                staging:/tmp/deployment/
           
+          # Alternative Method 2: If rsync is still slow, use parallel scp
+          if [ $? -ne 0 ]; then
+            echo "Fallback: Using parallel SCP with minimal compression..."
+            {
+              scp -C -o CompressionLevel=1 -o Cipher=aes128-ctr \
+                  app.tar.gz staging:/tmp/deployment/ &
+              scp requirements.txt app.py staging:/tmp/deployment/ &
+              wait
+            }
+          fi
+          
           # Verify transfer
           echo "Verifying files on staging server..."
           ssh staging "ls -lh /tmp/deployment/ && echo 'Transfer completed successfully'"
@@ -192,7 +213,7 @@ jobs:
         run: |
           echo "Setting up Docker with proper permissions..."
           
-          ssh staging << 'EOF'
+          ssh staging << 'DOCKER_SETUP_EOF'
             set -e
             
             # Install Docker if not present
@@ -212,15 +233,20 @@ jobs:
             # Add user to docker group and fix permissions
             sudo usermod -aG docker $USER
             
-            echo "Docker setup completed. Will use 'sudo docker' for Docker commands to avoid permission issues."
-          EOF
+            # Apply group changes immediately using newgrp or sg
+            echo "Setting up Docker permissions..."
+            
+            # Method 1: Use sg (switch group) to run docker commands
+            # This avoids the need to logout/login
+            echo "Docker setup completed. Will use 'sg docker' for Docker commands."
+          DOCKER_SETUP_EOF
 
       - name: 🚀 Deploy to Staging with fixed permissions
         timeout-minutes: 5
         run: |
           echo "Deploying to staging environment..."
           
-          ssh staging << 'EOF'
+          ssh staging << 'STAGING_EOF'
             set -e
             
             echo "=== Starting staging deployment ==="
@@ -229,15 +255,15 @@ jobs:
             # Stop existing application
             echo "Stopping existing containers..."
             sudo pkill -f "python.*app.py" || true
-            sudo docker stop student-app-staging 2>/dev/null || true
-            sudo docker rm student-app-staging 2>/dev/null || true
+            sg docker -c "docker stop student-app-staging 2>/dev/null || true"
+            sg docker -c "docker rm student-app-staging 2>/dev/null || true"
             
-            # Load new Docker image
+            # Load new Docker image using sg docker
             echo "Loading Docker image..."
             if [ -f app.tar.gz ]; then
               echo "Decompressing and loading Docker image..."
               gunzip -t app.tar.gz && echo "✅ Docker image file is valid"
-              gunzip -c app.tar.gz | sudo docker load
+              gunzip -c app.tar.gz | sg docker -c "docker load"
               echo "✅ Docker image loaded successfully"
             else
               echo "❌ Error: app.tar.gz not found"
@@ -245,34 +271,34 @@ jobs:
             fi
             
             # Verify Docker image
-            sudo docker images | grep student-management-app || exit 1
+            sg docker -c "docker images | grep student-management-app" || exit 1
             
             # Run new container
             echo "Starting new container..."
-            sudo docker run -d \
+            sg docker -c "docker run -d \
               --name student-app-staging \
               --restart unless-stopped \
               -p 5000:5000 \
               -e MONGO_URI='${{ secrets.MONGO_URI }}' \
-              student-management-app:${{ github.sha }}
+              student-management-app:${{ github.sha }}"
             
             # Wait for application to start
             echo "Waiting for application to start..."
             sleep 15
             
             # Check if container is running
-            if sudo docker ps | grep student-app-staging; then
+            if sg docker -c "docker ps | grep student-app-staging"; then
               echo "✅ Container is running successfully"
-              sudo docker logs student-app-staging --tail 10
+              sg docker -c "docker logs student-app-staging --tail 10"
             else
               echo "❌ Container failed to start"
               echo "Container logs:"
-              sudo docker logs student-app-staging || true
+              sg docker -c "docker logs student-app-staging" || true
               exit 1
             fi
             
             echo "✅ Staging deployment completed!"
-          EOF
+          STAGING_EOF
 
       - name: 🧪 Run staging health check
         timeout-minutes: 3
@@ -296,7 +322,7 @@ jobs:
           
           if [ $attempt -gt $max_attempts ]; then
             echo "❌ Staging health check failed after $max_attempts attempts"
-            ssh staging "sudo docker logs student-app-staging --tail 20" || true
+            ssh staging "sg docker -c 'docker logs student-app-staging --tail 20'" || true
             exit 1
           fi
 
@@ -351,25 +377,25 @@ jobs:
         with:
           name: docker-image
 
-      - name: 🔧 Setup SSH key file
-        run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          echo "${{ secrets.PRODUCTION_SSH_KEY }}" > ~/.ssh/production_key
-          chmod 600 ~/.ssh/production_key
+      - name: 🔑 Setup SSH Agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
 
       - name: 🔑 Configure optimized SSH for production
         run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
           # Add host to known_hosts
           ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
           
           # Create optimized SSH config
-          cat > ~/.ssh/config << 'SSH_CONFIG'
+          cat > ~/.ssh/config << EOF
           Host production
             HostName ${{ secrets.PRODUCTION_HOST }}
             User ${{ secrets.PRODUCTION_USER }}
-            IdentityFile ~/.ssh/production_key
             StrictHostKeyChecking no
             ConnectTimeout 10
             ServerAliveInterval 15
@@ -377,7 +403,15 @@ jobs:
             TCPKeepAlive yes
             Compression yes
             CompressionLevel 6
-          SSH_CONFIG
+            BatchMode yes
+            ControlMaster auto
+            ControlPath ~/.ssh/control-%r@%h:%p
+            ControlPersist 600
+            # Optimize for speed
+            Ciphers aes128-ctr,aes192-ctr,aes256-ctr
+            MACs hmac-sha2-256,hmac-sha2-512
+            KexAlgorithms diffie-hellman-group14-sha256,ecdh-sha2-nistp256
+          EOF
           chmod 600 ~/.ssh/config
 
       - name: 🧪 Test SSH Connection
@@ -418,7 +452,7 @@ jobs:
         run: |
           echo "Setting up Docker on production..."
           
-          ssh production << 'EOF'
+          ssh production << 'PROD_DOCKER_SETUP_EOF'
             set -e
             
             # Install Docker if not present
@@ -439,36 +473,36 @@ jobs:
             sudo usermod -aG docker $USER
             
             echo "Docker setup completed for production."
-          EOF
+          PROD_DOCKER_SETUP_EOF
 
       - name: 🚀 Deploy to Production
         timeout-minutes: 7
         run: |
           echo "Deploying to production environment..."
           
-          ssh production << 'EOF'
+          ssh production << 'PRODUCTION_EOF'
             set -e
             
             echo "=== Starting production deployment ==="
             cd /tmp/deployment
             
             # Create backup of current deployment
-            if sudo docker ps | grep student-app-production; then
+            if sg docker -c "docker ps | grep student-app-production"; then
               echo "Creating backup of current deployment..."
-              sudo docker tag student-management-app:current student-management-app:backup-$(date +%Y%m%d-%H%M%S) 2>/dev/null || true
+              sg docker -c "docker tag student-management-app:current student-management-app:backup-$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
             fi
             
             # Stop existing application gracefully
             echo "Stopping existing containers..."
-            sudo docker stop student-app-production 2>/dev/null || true
-            sudo docker rm student-app-production 2>/dev/null || true
+            sg docker -c "docker stop student-app-production 2>/dev/null || true"
+            sg docker -c "docker rm student-app-production 2>/dev/null || true"
             
             # Load new Docker image
             echo "Loading Docker image..."
             if [ -f app.tar.gz ]; then
               echo "Decompressing and loading Docker image..."
               gunzip -t app.tar.gz && echo "✅ Docker image file is valid"
-              gunzip -c app.tar.gz | sudo docker load
+              gunzip -c app.tar.gz | sg docker -c "docker load"
               echo "✅ Docker image loaded successfully"
             else
               echo "❌ Error: app.tar.gz not found"
@@ -476,37 +510,37 @@ jobs:
             fi
             
             # Tag as current version
-            sudo docker tag student-management-app:${{ github.sha }} student-management-app:current
+            sg docker -c "docker tag student-management-app:${{ github.sha }} student-management-app:current"
             
             # Verify Docker image
-            sudo docker images | grep student-management-app || exit 1
+            sg docker -c "docker images | grep student-management-app" || exit 1
             
             # Run new container
             echo "Starting new container..."
-            sudo docker run -d \
+            sg docker -c "docker run -d \
               --name student-app-production \
               --restart unless-stopped \
               -p 80:5000 \
               -e MONGO_URI='${{ secrets.MONGO_URI }}' \
-              student-management-app:current
+              student-management-app:current"
             
             # Wait for application to start
             echo "Waiting for application to start..."
             sleep 20
             
             # Check if container is running
-            if sudo docker ps | grep student-app-production; then
+            if sg docker -c "docker ps | grep student-app-production"; then
               echo "✅ Container is running successfully"
-              sudo docker logs student-app-production --tail 10
+              sg docker -c "docker logs student-app-production --tail 10"
             else
               echo "❌ Container failed to start"
               echo "Container logs:"
-              sudo docker logs student-app-production || true
+              sg docker -c "docker logs student-app-production" || true
               exit 1
             fi
             
             echo "✅ Production deployment completed!"
-          EOF
+          PRODUCTION_EOF
 
       - name: 🧪 Run production health check
         timeout-minutes: 5
@@ -527,7 +561,7 @@ jobs:
               # Show container status on failure
               if [ $attempt -eq 5 ] || [ $attempt -eq 10 ]; then
                 echo "Checking container status..."
-                ssh production "sudo docker ps -a | grep student-app || true; sudo docker logs student-app-production --tail 5 || true"
+                ssh production "sg docker -c 'docker ps -a | grep student-app || true; docker logs student-app-production --tail 5 || true'"
               fi
               
               sleep 15
@@ -539,26 +573,26 @@ jobs:
             echo "❌ Production health check failed after $max_attempts attempts"
             echo "Rolling back deployment..."
             
-            ssh production << 'EOF'
+            ssh production << 'ROLLBACK_EOF'
               echo "Rolling back to previous version..."
-              sudo docker stop student-app-production || true
-              sudo docker rm student-app-production || true
+              sg docker -c "docker stop student-app-production || true"
+              sg docker -c "docker rm student-app-production || true"
               
               # Find latest backup
-              BACKUP_IMAGE=$(sudo docker images --format 'table {{.Repository}}:{{.Tag}}' | grep backup- | head -n 1)
+              BACKUP_IMAGE=$(sg docker -c "docker images --format 'table {{.Repository}}:{{.Tag}}'" | grep backup- | head -n 1)
               
               if [ ! -z "$BACKUP_IMAGE" ]; then
                 echo "Restoring backup: $BACKUP_IMAGE"
-                sudo docker run -d \
+                sg docker -c "docker run -d \
                   --name student-app-production \
                   --restart unless-stopped \
                   -p 80:5000 \
                   -e MONGO_URI='${{ secrets.MONGO_URI }}' \
-                  $BACKUP_IMAGE
+                  $BACKUP_IMAGE"
               else
                 echo "No backup found, manual intervention required"
               fi
-            EOF
+            ROLLBACK_EOF
             
             exit 1
           fi
