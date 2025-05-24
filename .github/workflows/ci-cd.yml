@@ -47,7 +47,14 @@ jobs:
 
       - name: 🔑 Log in to Container Registry
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          # Try with PAT first, fallback to GITHUB_TOKEN
+          if [ -n "${{ secrets.CR_PAT }}" ]; then
+            echo "Using Personal Access Token for registry login..."
+            echo "${{ secrets.CR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          else
+            echo "Using GitHub Token for registry login..."
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          fi
 
       - name: 🏗️ Build Docker image
         run: |
@@ -205,7 +212,11 @@ jobs:
             echo "=== Starting staging deployment ==="
             
             # Login to registry
-            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            if [ -n "${{ secrets.CR_PAT }}" ]; then
+              echo "${{ secrets.CR_PAT }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            else
+              echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            fi
             
             # Stop existing application
             echo "Stopping existing containers..."
@@ -214,7 +225,13 @@ jobs:
             
             # Pull the new image
             echo "Pulling Docker image from registry..."
-            sudo docker pull $IMAGE_TAG
+            if ! sudo docker pull $IMAGE_TAG; then
+              echo "Failed to pull $IMAGE_TAG, trying with SHA tag..."
+              IMAGE_TAG_SHA="ghcr.io/${REPO_LOWER}:${{ github.sha }}"
+              sudo docker pull $IMAGE_TAG_SHA
+              sudo docker tag $IMAGE_TAG_SHA $IMAGE_TAG
+              echo "Successfully pulled and retagged image"
+            fi
             
             # Run new container
             echo "Starting new container..."
@@ -347,7 +364,11 @@ jobs:
             echo "=== Starting production deployment ==="
             
             # Login to registry
-            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            if [ -n "${{ secrets.CR_PAT }}" ]; then
+              echo "${{ secrets.CR_PAT }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            else
+              echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            fi
             
             # Create backup of current deployment
             if sudo docker ps | grep student-app-production; then
@@ -363,7 +384,13 @@ jobs:
             
             # Pull the new image
             echo "Pulling Docker image from registry..."
-            sudo docker pull $IMAGE_TAG
+            if ! sudo docker pull $IMAGE_TAG; then
+              echo "Failed to pull $IMAGE_TAG, trying with SHA tag..."
+              IMAGE_TAG_SHA="ghcr.io/${REPO_LOWER}:${{ github.sha }}"
+              sudo docker pull $IMAGE_TAG_SHA
+              sudo docker tag $IMAGE_TAG_SHA $IMAGE_TAG
+              echo "Successfully pulled and retagged image"
+            fi
             
             # Run new container
             echo "Starting new container..."
