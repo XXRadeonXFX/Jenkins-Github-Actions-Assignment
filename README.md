@@ -153,6 +153,7 @@ student-management-cicd/
     ├── jenkins-pipeline-config.png
     ├── github-actions.png
     └── production-deployment.png
+    └── staging-deployment.png
     └── email-test.png
 ```
 
