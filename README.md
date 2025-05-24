@@ -144,9 +144,10 @@ student-management-cicd/
 ├── 📄 requirements.txt             # Python dependencies
 ├── 📄 Dockerfile                   # Container configuration
 ├── 📄 Jenkinsfile                  # Jenkins pipeline definition
+├── 📄 sample_data.json             # Jenkins pipeline definition
 ├── 📁 .github/
 │   └── 📁 workflows/
-│       └── 📄 ci-cd.yml       # GitHub Actions workflow
+│       └── 📄 ci-cd.yml            # GitHub Actions workflow
 └── 📁 screenshots/                 # Pipeline execution screenshots
     ├── jenkins-pipeline.png
     ├── github-actions.png
