@@ -147,7 +147,7 @@ student-management-cicd/
 ├── 📄 Jenkinsfile                  # Jenkins pipeline definition
 ├── 📁 .github/
 │   └── 📁 workflows/
-│       └── 📄 flask-cicd.yml       # GitHub Actions workflow
+│       └── 📄 ci-cd.yml       # GitHub Actions workflow
 └── 📁 screenshots/                 # Pipeline execution screenshots
     ├── jenkins-pipeline.png
     ├── github-actions.png
