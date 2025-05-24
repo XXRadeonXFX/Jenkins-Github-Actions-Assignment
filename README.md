@@ -291,6 +291,78 @@ student-management-cicd/
 - **Health Monitoring**: Automated health checks with retries
 - **Artifact Management**: Test reports and coverage data
 
+# 🧪 Staging Deployment Guide
+![Staging Deployment](screenshots/staging-deployment.png)
+*Staging will be deployed after we push code to staging branch*
+
+This guide shows how to deploy your application to staging for testing before production.
+
+## 📋 Quick Overview
+
+1. **Push to staging branch** → 2. **Automatic deployment** → 3. **Test your changes** → 4. **Ready for production**
+
+## 🌿 Step 1: Deploy to Staging Branch
+
+### Option A: Direct Push to Staging
+```bash
+# Switch to staging branch
+git checkout staging
+
+# Pull latest changes
+git pull origin staging
+
+# Merge your changes from main/feature branch
+git merge main
+
+# Push to trigger deployment
+git push origin staging
+```
+
+## ⚡ Step 2: Automatic Deployment
+
+Once you push to staging branch:
+- ✅ GitHub Actions automatically starts
+- ✅ Runs all tests with cloud MongoDB
+- ✅ Performs code quality checks
+- ✅ Runs security scans
+- ✅ Builds Docker image
+- ✅ Deploys to staging server
+- ✅ Runs health checks
+
+![Output of Staging](screenshots/output-staging.png)
+*Here is the output of staging deployment*
+
+## 🔍 Step 3: Monitor Deployment
+
+1. **Check GitHub Actions**: Go to **Actions** tab in your repository
+2. **Look for staging workflow**: Find the workflow triggered by staging push
+3. **Watch Progress**: Monitor each step of the deployment
+4. **View Logs**: Click on the running workflow to see detailed logs
+5. **Access Staging**: Once complete, your app is live at staging URL
+
+
+### Automated Testing
+- **Health checks**: Automatically verified during deployment
+- **API endpoints**: Test all endpoints are working
+- **Database connections**: MongoDB connectivity verified
+- **Performance**: Check response times
+
+## 🔍 Environment Details
+
+| Environment | Branch | URL | Purpose |
+|-------------|--------|-----|---------|
+| **Staging** | `staging` | `http://staging-server:5000` | Testing & QA |
+| **Production** | `main` (via releases) | `http://production-server` | Live application |
+
+## 🚨 Important Notes
+
+- **Staging deploys on every push to `staging` branch**
+- **Production deploys only on GitHub releases**
+- **Always test in staging before production release**
+- **Staging uses the same MongoDB as production**
+- **Staging container runs on port 5000**
+
+
 # 🚀 Production Deployment Guide
 
 ![Production Deployment](screenshots/production-deployment.png)
