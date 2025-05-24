@@ -329,6 +329,7 @@ Once you push to staging branch:
 - ✅ Deploys to staging server
 - ✅ Runs health checks
 
+# Staging Deployment Verification
 ![Output of Staging](screenshots/output-staging.png)
 
 ## 🔍 Step 3: Monitor Deployment
