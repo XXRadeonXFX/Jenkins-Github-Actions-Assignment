@@ -423,6 +423,9 @@ Once you create the release:
 - ✅ Runs health checks
 - ✅ Sends notification email
 
+# Production Deployment Verification
+![Output of Production](screenshots/output-production.png)
+
 ## 🔍 Monitor Deployment
 
 1. **Check GitHub Actions**: Go to **Actions** tab in your repository
