@@ -55,13 +55,9 @@ This project demonstrates **complete CI/CD pipelines** for a Python Flask Studen
    STAGING_HOST           = your-staging-server-ip
    STAGING_USER           = ubuntu
    STAGING_SSH_KEY        = -----BEGIN OPENSSH PRIVATE KEY-----...
-   STAGING_URL            = https://staging.your-domain.com
    PRODUCTION_HOST        = your-production-server-ip  
    PRODUCTION_USER        = ubuntu
    PRODUCTION_SSH_KEY     = -----BEGIN OPENSSH PRIVATE KEY-----...
-   PRODUCTION_URL         = https://your-domain.com
-   BACKUP_S3_BUCKET       = your-backup-bucket-name
-   ```
 
 ### **Jenkins Credentials Setup**
 
