@@ -223,12 +223,12 @@ try:
     db_name = mongo_uri.split('/')[-1].split('?')[0] if '/' in mongo_uri else 'test'
     db = client[db_name]
     collections = db.list_collection_names()
-    print(f'✅ Database access successful. Collections: {len(collections)}')
+    print('✅ Database access successful. Collections: ' + str(len(collections)))
     
 except ImportError:
     print('⚠️ pymongo not installed, skipping MongoDB connection test')
 except Exception as e:
-    print(f'❌ MongoDB connection failed: {str(e)}')
+    print('❌ MongoDB connection failed: ' + str(e))
     sys.exit(1)
 " || exit 1
                                     
@@ -523,7 +523,7 @@ try:
 except ImportError:
     print('⚠️ pymongo not available, skipping connection test')
 except Exception as e:
-    print(f'⚠️ MongoDB connection test failed: {e}')
+    print('⚠️ MongoDB connection test failed: ' + str(e))
 " || echo "⚠️ MongoDB connection test completed"
             else
                 echo "❌ Container failed to start"
