@@ -150,8 +150,9 @@ student-management-cicd/
 │       └── 📄 ci-cd.yml            # GitHub Actions workflow
 └── 📁 screenshots/                 # Pipeline execution screenshots
     ├── jenkins-pipeline.png
+    ├── jenkins-pipeline-config.png
     ├── github-actions.png
-    └── deployment-success.png
+    └── production-deployment.png
     └── email-test.png
 ```
 
