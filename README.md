@@ -40,6 +40,71 @@ This project demonstrates **complete CI/CD pipelines** for a Python Flask Studen
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
+
+Here's a clean and well-structured documentation you can use or share with your team:
+
+---
+
+# 📧 Configuring Gmail SMTP in Jenkins with App Password
+
+When using Gmail to send email notifications from Jenkins, standard username/password authentication often fails due to Google’s security restrictions. This guide walks you through setting up **App Passwords** to enable secure SMTP access in Jenkins.
+
+---
+
+## 🔐 Step-by-Step Setup Using Gmail App Password
+
+### ✅ 1. Enable 2-Step Verification
+
+To use App Passwords, **2-Step Verification** must be enabled for your Gmail account.
+
+* Visit: [Google Account Security Settings](https://myaccount.google.com/security)
+* Under **"Signing in to Google"**, enable **2-Step Verification**
+* Complete the verification process with your phone
+
+---
+
+### 🔑 2. Generate an App Password
+
+1. Go to: [https://myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
+2. Log in with your Gmail account (if prompted)
+3. Under **"Select app"**, choose **Mail**
+4. Under **"Select device"**, choose **Other (Custom name)** and enter `Jenkins`
+5. Click **Generate**
+6. Google will display a **16-character app password**, e.g.,
+   `abcd efgh ijkl mnop`
+   **Copy this — you will use it in Jenkins**
+
+---
+
+### ⚙️ 3. Configure SMTP in Jenkins
+
+In your Jenkins dashboard:
+
+1. Go to:
+   **Manage Jenkins → Configure System**
+
+2. Scroll to **E-mail Notification** section.
+
+3. Configure the following:
+
+   * **SMTP Server**: `smtp.gmail.com`
+   * ✅ **Use SMTP Authentication**
+   * **Username**: `yourname@gmail.com`
+   * **Password**: *Paste the App Password from Step 2*
+   * ✅ **Use SSL** (if using port 465) or ✅ **Use TLS** (if using port 587)
+   * **SMTP Port**:
+
+     * `465` for SSL
+     * `587` for TLS
+
+4. Click the **“Test configuration by sending test e-mail”** button to verify everything works.
+
+![Email Configuration Test](screenshots/email-test.png)
+*Test Show SMTP is working fine*
+
+---
+
+
 ## 🔐 Secret Configuration
 
 ### **GitHub Secrets Setup**
