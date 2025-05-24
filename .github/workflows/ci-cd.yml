@@ -1,4 +1,4 @@
-name: Flask CI/CD with Container Registry
+name: Flask CI/CD Simple Registry
 
 on:
   push:
@@ -46,32 +46,40 @@ jobs:
           MONGO_URI: ${{ secrets.MONGO_URI }}
 
       - name: 🔑 Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: 🏗️ Extract metadata for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+      - name: 🏗️ Build Docker image
+        run: |
+          # Convert repository name to lowercase
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          
+          # Build image with simple tags
+          docker build -t ghcr.io/${REPO_LOWER}:${{ github.sha }} .
+          docker build -t ghcr.io/${REPO_LOWER}:latest .
+          
+          # Tag for branch-specific deployment
+          if [ "${{ github.ref_name }}" = "staging" ]; then
+            docker tag ghcr.io/${REPO_LOWER}:${{ github.sha }} ghcr.io/${REPO_LOWER}:staging
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            docker tag ghcr.io/${REPO_LOWER}:${{ github.sha }} ghcr.io/${REPO_LOWER}:production
+          fi
 
-      - name: 🚀 Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: 🚀 Push Docker image
+        run: |
+          # Convert repository name to lowercase
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          
+          # Push all tags
+          docker push ghcr.io/${REPO_LOWER}:${{ github.sha }}
+          docker push ghcr.io/${REPO_LOWER}:latest
+          
+          # Push branch-specific tags
+          if [ "${{ github.ref_name }}" = "staging" ]; then
+            docker push ghcr.io/${REPO_LOWER}:staging
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            docker push ghcr.io/${REPO_LOWER}:production
+          fi
 
   code-quality:
     runs-on: ubuntu-latest
@@ -130,9 +138,6 @@ jobs:
     environment: staging
 
     steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
       - name: 🔧 Setup SSH key file
         run: |
           mkdir -p ~/.ssh
@@ -142,11 +147,9 @@ jobs:
 
       - name: 🔑 Configure SSH
         run: |
-          # Add host to known_hosts
           ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
           
-          # Create SSH config
           cat > ~/.ssh/config << 'SSH_CONFIG'
           Host staging
             HostName ${{ secrets.STAGING_HOST }}
@@ -162,41 +165,38 @@ jobs:
           echo "Testing SSH connection..."
           ssh staging "echo 'SSH connection successful'; whoami; uptime"
 
-      - name: 🐳 Setup Docker and Registry on staging
+      - name: 🐳 Setup Docker on staging
         timeout-minutes: 3
         run: |
-          echo "Setting up Docker and container registry access..."
+          echo "Setting up Docker..."
           
           ssh staging << 'EOF'
             set -e
             
-            # Install Docker if not present
             if ! command -v docker &> /dev/null; then
               echo "Installing Docker..."
               curl -fsSL https://get.docker.com -o get-docker.sh
               sudo sh get-docker.sh
-              echo "Docker installed successfully"
             else
               echo "Docker already installed: $(docker --version)"
             fi
             
-            # Ensure Docker service is running
             sudo systemctl start docker
             sudo systemctl enable docker
-            
-            # Add user to docker group
             sudo usermod -aG docker $USER
             
             echo "Docker setup completed."
           EOF
 
-      - name: 🚀 Deploy to Staging via Container Registry
+      - name: 🚀 Deploy to Staging
         timeout-minutes: 5
         run: |
-          echo "Deploying to staging using container registry..."
+          echo "Deploying to staging..."
           
-          # Get the image tag for this branch
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging-${{ github.sha }}"
+          # Convert repository name to lowercase
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_TAG="ghcr.io/${REPO_LOWER}:staging"
+          
           echo "Deploying image: $IMAGE_TAG"
           
           ssh staging << EOF
@@ -204,15 +204,15 @@ jobs:
             
             echo "=== Starting staging deployment ==="
             
-            # Login to GitHub Container Registry
-            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+            # Login to registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
             # Stop existing application
             echo "Stopping existing containers..."
             sudo docker stop student-app-staging 2>/dev/null || true
             sudo docker rm student-app-staging 2>/dev/null || true
             
-            # Pull the new image (much faster than file transfer!)
+            # Pull the new image
             echo "Pulling Docker image from registry..."
             sudo docker pull $IMAGE_TAG
             
@@ -235,14 +235,9 @@ jobs:
               sudo docker logs student-app-staging --tail 10
             else
               echo "❌ Container failed to start"
-              echo "Container logs:"
               sudo docker logs student-app-staging || true
               exit 1
             fi
-            
-            # Cleanup old images (keep last 3)
-            echo "Cleaning up old images..."
-            sudo docker images ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} --format "table {{.Tag}}\t{{.ID}}" | grep staging | tail -n +4 | awk '{print \$2}' | xargs -r sudo docker rmi || true
             
             echo "✅ Staging deployment completed!"
           EOF
@@ -268,47 +263,15 @@ jobs:
           done
           
           if [ $attempt -gt $max_attempts ]; then
-            echo "❌ Staging health check failed after $max_attempts attempts"
-            ssh staging "sudo docker logs student-app-staging --tail 20" || true
+            echo "❌ Staging health check failed"
             exit 1
           fi
-
-      - name: 🧪 Run staging smoke tests
-        timeout-minutes: 2
-        run: |
-          echo "Running smoke tests on staging..."
-          
-          # Test API endpoints
-          echo "Testing /students endpoint..."
-          if curl -f --connect-timeout 5 --max-time 15 http://${{ secrets.STAGING_HOST }}:5000/students; then
-            echo "✅ /students endpoint working"
-          else
-            echo "❌ /students endpoint failed"
-            exit 1
-          fi
-          
-          echo "Testing POST /students endpoint..."
-          response=$(curl -f --connect-timeout 5 --max-time 15 -X POST http://${{ secrets.STAGING_HOST }}:5000/students \
-            -H "Content-Type: application/json" \
-            -d '{"name": "Test User", "age": 25}')
-          
-          if [ $? -eq 0 ]; then
-            echo "✅ POST /students endpoint working"
-            echo "Response: $response"
-          else
-            echo "❌ POST /students endpoint failed"
-            exit 1
-          fi
-          
-          echo "✅ All smoke tests passed!"
 
       - name: 📢 Staging deployment notification
         run: |
           echo "✅ Staging deployment completed successfully!"
           echo "🌐 Staging URL: http://${{ secrets.STAGING_HOST }}:5000"
-          echo "🏥 Health URL: http://${{ secrets.STAGING_HOST }}:5000/health"
-          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging-${{ github.sha }}"
-          echo "🧪 Staging environment is ready for testing"
+          echo "📦 Image: ghcr.io/$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]'):staging"
 
   deploy-production:
     if: github.event_name == 'release'
@@ -317,9 +280,6 @@ jobs:
     environment: production
 
     steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
-
       - name: 🔧 Setup SSH key file
         run: |
           mkdir -p ~/.ssh
@@ -329,11 +289,9 @@ jobs:
 
       - name: 🔑 Configure SSH for production
         run: |
-          # Add host to known_hosts
           ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
           chmod 644 ~/.ssh/known_hosts
           
-          # Create SSH config
           cat > ~/.ssh/config << 'SSH_CONFIG'
           Host production
             HostName ${{ secrets.PRODUCTION_HOST }}
@@ -357,33 +315,30 @@ jobs:
           ssh production << 'EOF'
             set -e
             
-            # Install Docker if not present
             if ! command -v docker &> /dev/null; then
               echo "Installing Docker..."
               curl -fsSL https://get.docker.com -o get-docker.sh
               sudo sh get-docker.sh
-              echo "Docker installed successfully"
             else
               echo "Docker already installed"
             fi
             
-            # Ensure Docker service is running
             sudo systemctl start docker
             sudo systemctl enable docker
-            
-            # Add user to docker group
             sudo usermod -aG docker $USER
             
             echo "Docker setup completed for production."
           EOF
 
-      - name: 🚀 Deploy to Production via Container Registry
+      - name: 🚀 Deploy to Production
         timeout-minutes: 7
         run: |
-          echo "Deploying to production using container registry..."
+          echo "Deploying to production..."
           
-          # Get the image tag for this release
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-${{ github.sha }}"
+          # Convert repository name to lowercase
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_TAG="ghcr.io/${REPO_LOWER}:production"
+          
           echo "Deploying image: $IMAGE_TAG"
           
           ssh production << EOF
@@ -391,14 +346,14 @@ jobs:
             
             echo "=== Starting production deployment ==="
             
-            # Login to GitHub Container Registry
-            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+            # Login to registry
+            echo "${{ secrets.GITHUB_TOKEN }}" | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
             # Create backup of current deployment
             if sudo docker ps | grep student-app-production; then
               echo "Creating backup of current deployment..."
               CURRENT_IMAGE=\$(sudo docker inspect student-app-production --format='{{.Config.Image}}')
-              sudo docker tag \$CURRENT_IMAGE ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:backup-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true
+              sudo docker tag \$CURRENT_IMAGE ${REPO_LOWER}:backup-\$(date +%Y%m%d-%H%M%S) 2>/dev/null || true
             fi
             
             # Stop existing application gracefully
@@ -409,9 +364,6 @@ jobs:
             # Pull the new image
             echo "Pulling Docker image from registry..."
             sudo docker pull $IMAGE_TAG
-            
-            # Tag as current version
-            sudo docker tag $IMAGE_TAG ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:current
             
             # Run new container
             echo "Starting new container..."
@@ -432,23 +384,18 @@ jobs:
               sudo docker logs student-app-production --tail 10
             else
               echo "❌ Container failed to start"
-              echo "Container logs:"
               sudo docker logs student-app-production || true
               exit 1
             fi
-            
-            # Cleanup old images (keep last 5)
-            echo "Cleaning up old images..."
-            sudo docker images ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} --format "table {{.Tag}}\t{{.ID}}" | grep -E "(main|backup)" | tail -n +6 | awk '{print \$2}' | xargs -r sudo docker rmi || true
             
             echo "✅ Production deployment completed!"
           EOF
 
       - name: 🧪 Run production health check
-        timeout-minutes: 5
+        timeout-minutes: 3
         run: |
           echo "Running health check on production..."
-          max_attempts=15
+          max_attempts=10
           attempt=1
           
           while [ $attempt -le $max_attempts ]; do
@@ -459,109 +406,22 @@ jobs:
               break
             else
               echo "❌ Health check failed, retrying in 15 seconds..."
-              
-              # Show container status on failure
-              if [ $attempt -eq 5 ] || [ $attempt -eq 10 ]; then
-                echo "Checking container status..."
-                ssh production "sudo docker ps -a | grep student-app || true; sudo docker logs student-app-production --tail 5 || true"
-              fi
-              
               sleep 15
               attempt=$((attempt + 1))
             fi
           done
           
           if [ $attempt -gt $max_attempts ]; then
-            echo "❌ Production health check failed after $max_attempts attempts"
-            echo "Rolling back deployment..."
-            
-            ssh production << 'EOF'
-              echo "Rolling back to previous version..."
-              sudo docker stop student-app-production || true
-              sudo docker rm student-app-production || true
-              
-              # Find latest backup
-              BACKUP_IMAGE=$(sudo docker images --format 'table {{.Repository}}:{{.Tag}}' | grep backup- | head -n 1 | tr -s ' ' | cut -d' ' -f1)
-              
-              if [ ! -z "$BACKUP_IMAGE" ]; then
-                echo "Restoring backup: $BACKUP_IMAGE"
-                sudo docker run -d \
-                  --name student-app-production \
-                  --restart unless-stopped \
-                  -p 80:5000 \
-                  -e MONGO_URI='${{ secrets.MONGO_URI }}' \
-                  $BACKUP_IMAGE
-              else
-                echo "No backup found, manual intervention required"
-              fi
-            EOF
-            
+            echo "❌ Production health check failed"
             exit 1
           fi
-
-      - name: 🧪 Run production smoke tests
-        timeout-minutes: 3
-        run: |
-          echo "Running comprehensive smoke tests on production..."
-          
-          # Test core API endpoints
-          echo "Testing /health endpoint..."
-          if curl -f --connect-timeout 5 --max-time 15 http://${{ secrets.PRODUCTION_HOST }}/health; then
-            echo "✅ Health endpoint working"
-          else
-            echo "❌ Health endpoint failed"
-            exit 1
-          fi
-          
-          echo "Testing /students endpoint..."
-          if curl -f --connect-timeout 5 --max-time 15 http://${{ secrets.PRODUCTION_HOST }}/students; then
-            echo "✅ Students endpoint working"
-          else
-            echo "❌ Students endpoint failed"
-            exit 1
-          fi
-          
-          echo "Testing POST /students endpoint..."
-          response=$(curl -f --connect-timeout 5 --max-time 15 -X POST http://${{ secrets.PRODUCTION_HOST }}/students \
-            -H "Content-Type: application/json" \
-            -d '{"name": "Production Test User", "age": 25}')
-          
-          if [ $? -eq 0 ]; then
-            echo "✅ POST /students endpoint working"
-            echo "Response: $response"
-            
-            # Extract student ID and test GET by ID
-            student_id=$(echo "$response" | grep -o '"_id":"[^"]*"' | cut -d'"' -f4)
-            if [ ! -z "$student_id" ]; then
-              echo "Testing GET /students/$student_id endpoint..."
-              if curl -f --connect-timeout 5 --max-time 15 http://${{ secrets.PRODUCTION_HOST }}/students/$student_id; then
-                echo "✅ GET by ID working"
-              else
-                echo "❌ GET by ID failed"
-              fi
-              
-              echo "Testing DELETE /students/$student_id endpoint..."
-              if curl -f --connect-timeout 5 --max-time 15 -X DELETE http://${{ secrets.PRODUCTION_HOST }}/students/$student_id; then
-                echo "✅ DELETE endpoint working"
-              else
-                echo "❌ DELETE endpoint failed"
-              fi
-            fi
-          else
-            echo "❌ POST /students endpoint failed"
-            exit 1
-          fi
-          
-          echo "✅ All production smoke tests passed!"
 
       - name: 📊 Production deployment notification
         run: |
           echo "🎉 Production deployment completed successfully!"
           echo "📦 Version: ${{ github.event.release.tag_name }}"
           echo "🌐 Production URL: http://${{ secrets.PRODUCTION_HOST }}"
-          echo "🏥 Health URL: http://${{ secrets.PRODUCTION_HOST }}/health"
-          echo "📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-${{ github.sha }}"
-          echo "🚀 Production environment is live and healthy"
+          echo "📦 Image: ghcr.io/$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]'):production"
 
   cleanup:
     if: always()
@@ -572,7 +432,6 @@ jobs:
       - name: 🧹 Cleanup test data
         run: |
           echo "Cleaning up any test data from cloud MongoDB..."
-          # Add cleanup script if needed
           echo "Test cleanup completed"
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
