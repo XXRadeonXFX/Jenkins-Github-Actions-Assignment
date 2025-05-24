@@ -40,9 +40,6 @@ This project demonstrates **complete CI/CD pipelines** for a Python Flask Studen
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-
-Here's a clean and well-structured documentation you can use or share with your team:
-
 ---
 
 # 📧 Configuring Gmail SMTP in Jenkins with App Password
