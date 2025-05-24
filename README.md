@@ -258,7 +258,7 @@ student-management-cicd/
    ```
 ---
 
-```markdown
+
 # 🚀 Student App Deployment on EC2
 
 This project provides a Jenkins-based pipeline to deploy the **Student App** onto a remote **EC2 instance** using Docker. The pipeline uses SSH credentials to access the server and manages container lifecycle (stop → remove → run) in a fully automated manner.
@@ -301,7 +301,7 @@ http://<ec2-ip>:5000
 http://<ec2-ip>:5000/students
 http://<ec2-ip>:5000/health
 ``` 
----
+
 
 ## ⚡ GitHub Actions Workflow
 ![GitHub Actions Workflow](screenshots/github-actions.png)
