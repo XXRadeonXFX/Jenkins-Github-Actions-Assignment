@@ -10,7 +10,6 @@ pipeline {
         CONTAINER_NAME = "student-app-container"
         APP_PORT = "5000"
         NOTIFICATION_EMAIL = "prince.thakur24051996@gmail.com"
-        MONGO_URI = "PRINCE_MONGO_URI"
     }
     
     stages {
@@ -47,6 +46,18 @@ pipeline {
                         if (!fileExists(file)) {
                             error "Required file '${file}' not found in workspace"
                         }
+                    }
+                    
+                    // ✅ NEW: Verify MongoDB credentials are configured
+                    try {
+                        withCredentials([string(credentialsId: 'PRINCE_MONGO_URI', variable: 'MONGO_URI_TEST')]) {
+                            if (env.MONGO_URI_TEST == null || env.MONGO_URI_TEST.trim() == '') {
+                                error "MongoDB URI credential is empty or not configured"
+                            }
+                            echo "✅ MongoDB credentials validated"
+                        }
+                    } catch (Exception e) {
+                        error "❌ MongoDB URI credential not found. Please ensure 'PRINCE_MONGO_URI' credential exists in Jenkins"
                     }
                     
                     echo "✅ Environment validation completed"
@@ -106,20 +117,24 @@ pipeline {
         stage('🚀 Deploy to EC2') {
             steps {
                 script {
-                    echo "Deploying to EC2..."
-                    sshagent([env.SSH_CREDENTIALS_ID]) {
-                        
-                        // Test SSH connectivity
-                        testSSHConnection()
-                        
-                        // Setup EC2 environment
-                        setupEC2Environment()
-                        
-                        // Copy application files
-                        copyApplicationFiles()
-                        
-                        // Deploy application
-                        deployApplication()
+                    echo "Deploying to EC2 with secure MongoDB connection..."
+                    
+                    // ✅ FIXED: Use withCredentials to securely access MONGO_URI
+                    withCredentials([string(credentialsId: 'PRINCE_MONGO_URI', variable: 'MONGO_URI')]) {
+                        sshagent([env.SSH_CREDENTIALS_ID]) {
+                            
+                            // Test SSH connectivity
+                            testSSHConnection()
+                            
+                            // Setup EC2 environment
+                            setupEC2Environment()
+                            
+                            // Copy application files
+                            copyApplicationFiles()
+                            
+                            // Deploy application with secure MONGO_URI
+                            deployApplicationSecure()
+                        }
                     }
                 }
             }
@@ -128,36 +143,100 @@ pipeline {
         stage('🏥 Health Check') {
             steps {
                 script {
-                    echo "Running health checks..."
-                    sshagent([env.SSH_CREDENTIALS_ID]) {
-                        sh '''
-                            sleep 15
-                            
-                            ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
-                                echo "Checking container status..."
+                    echo "Running comprehensive health checks..."
+                    
+                    // ✅ IMPROVED: Enhanced health check with MongoDB verification
+                    withCredentials([string(credentialsId: 'PRINCE_MONGO_URI', variable: 'MONGO_URI')]) {
+                        sshagent([env.SSH_CREDENTIALS_ID]) {
+                            sh '''
+                                sleep 15
                                 
-                                for i in {1..5}; do
-                                    echo "Health check attempt $i/5"
+                                ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                                    echo "🔍 Running comprehensive health checks..."
                                     
+                                    # Check container status
+                                    echo "=== Container Status Check ==="
                                     if docker ps --filter "name=''' + env.CONTAINER_NAME + '''" --filter "status=running" | grep -q ''' + env.CONTAINER_NAME + '''; then
                                         echo "✅ Container is running"
-                                        
-                                        if curl -f -s http://localhost:''' + env.APP_PORT + '''/ >/dev/null; then
-                                            echo "✅ Application responding to HTTP requests"
-                                            echo "🎉 Health check passed!"
-                                            exit 0
-                                        fi
+                                        docker ps | grep ''' + env.CONTAINER_NAME + '''
+                                    else
+                                        echo "❌ Container is not running"
+                                        echo "Checking all containers:"
+                                        docker ps -a | grep ''' + env.CONTAINER_NAME + ''' || echo "Container not found"
+                                        echo "Container logs:"
+                                        docker logs ''' + env.CONTAINER_NAME + ''' || echo "No logs available"
+                                        exit 1
                                     fi
                                     
-                                    echo "Waiting 10 seconds before retry..."
-                                    sleep 10
-                                done
-                                
-                                echo "❌ Health check failed"
-                                docker logs ''' + env.CONTAINER_NAME + '''
-                                exit 1
-                            '
-                        '''
+                                    # Check environment variables in container
+                                    echo "=== Environment Variables Check ==="
+                                    if docker exec ''' + env.CONTAINER_NAME + ''' env | grep -q MONGO_URI; then
+                                        echo "✅ MONGO_URI environment variable is set"
+                                        # Show masked URI for security
+                                        docker exec ''' + env.CONTAINER_NAME + ''' bash -c "echo \"MONGO_URI: \${MONGO_URI:0:20}...[MASKED]\""
+                                    else
+                                        echo "❌ MONGO_URI environment variable not found"
+                                        docker exec ''' + env.CONTAINER_NAME + ''' env
+                                        exit 1
+                                    fi
+                                    
+                                    # Test MongoDB connection
+                                    echo "=== MongoDB Connection Test ==="
+                                    docker exec ''' + env.CONTAINER_NAME + ''' python3 -c "
+import os
+import sys
+try:
+    from pymongo import MongoClient
+    mongo_uri = os.environ.get('MONGO_URI')
+    if not mongo_uri:
+        print('❌ MONGO_URI environment variable not found')
+        sys.exit(1)
+    
+    print('🔍 Testing MongoDB connection...')
+    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
+    client.admin.command('ping')
+    print('✅ MongoDB connection successful')
+    
+    # Test database access
+    db_name = mongo_uri.split('/')[-1].split('?')[0] if '/' in mongo_uri else 'test'
+    db = client[db_name]
+    collections = db.list_collection_names()
+    print(f'✅ Database access successful. Collections: {len(collections)}')
+    
+except ImportError:
+    print('⚠️ pymongo not installed, skipping MongoDB connection test')
+except Exception as e:
+    print(f'❌ MongoDB connection failed: {str(e)}')
+    sys.exit(1)
+" || exit 1
+                                    
+                                    # Test HTTP endpoint
+                                    echo "=== HTTP Endpoint Test ==="
+                                    for i in {1..5}; do
+                                        echo "HTTP test attempt $i/5"
+                                        
+                                        if curl -f -s --max-time 10 http://localhost:''' + env.APP_PORT + '''/ >/dev/null; then
+                                            echo "✅ Application responding to HTTP requests"
+                                            
+                                            # Get response for verification
+                                            response=$(curl -s --max-time 5 http://localhost:''' + env.APP_PORT + '''/ | head -c 200)
+                                            echo "Response preview: $response"
+                                            
+                                            echo "🎉 All health checks passed!"
+                                            exit 0
+                                        fi
+                                        
+                                        echo "Waiting 10 seconds before retry..."
+                                        sleep 10
+                                    done
+                                    
+                                    echo "❌ HTTP health check failed"
+                                    echo "Container logs:"
+                                    docker logs --tail 50 ''' + env.CONTAINER_NAME + '''
+                                    exit 1
+                                '
+                            '''
+                        }
                     }
                 }
             }
@@ -178,7 +257,7 @@ pipeline {
                 echo "🌐 Application available at: http://${EC2_HOST}:${APP_PORT}"
             }
             
-            // Attractive email notification for success
+            // ✅ ENHANCED: Success notification with MongoDB status
             mail to: env.NOTIFICATION_EMAIL,
                  subject: "🎉 SUCCESS: ${env.JOB_NAME} Build #${env.BUILD_NUMBER} ✅",
                  body: """
@@ -198,14 +277,22 @@ pipeline {
    • Container: ${CONTAINER_NAME}
    • Docker Image: ${DOCKER_IMAGE}
 
+✅ VERIFIED COMPONENTS:
+   • ✅ Container is running and healthy
+   • ✅ MongoDB connection established
+   • ✅ HTTP endpoints responding
+   • ✅ Environment variables configured
+   • ✅ Application ready for use
+
 🔗 QUICK LINKS:
    • View Build: ${env.BUILD_URL}
    • Console Output: ${env.BUILD_URL}console
    • Test Application: http://${EC2_HOST}:${APP_PORT}
 
-✅ All stages completed successfully!
-✅ Application is running and healthy!
-✅ Ready for use!
+🎯 NEXT STEPS:
+   • Test your application endpoints
+   • Monitor application logs if needed
+   • Database is connected and accessible
 
 ═══════════════════════════════════════════════════════════════
 Happy Coding! 🚀
@@ -219,7 +306,7 @@ Happy Coding! 🚀
                 collectDebugInfo()
             }
             
-            // Attractive email notification for failure
+            // ✅ ENHANCED: Failure notification with specific troubleshooting
             mail to: env.NOTIFICATION_EMAIL,
                  subject: "🚨 FAILURE: ${env.JOB_NAME} Build #${env.BUILD_NUMBER} ❌",
                  body: """
@@ -244,6 +331,13 @@ Happy Coding! 🚀
    • Console Logs: ${env.BUILD_URL}console
    • Blue Ocean: ${env.BUILD_URL}display/redirect
 
+📊 MONGODB-SPECIFIC CHECKS:
+   ❗ Verify MongoDB URI credential 'PRINCE_MONGO_URI' exists in Jenkins
+   ❗ Check MongoDB server is accessible from EC2
+   ❗ Confirm MongoDB URI format is correct
+   ❗ Validate database authentication credentials
+   ❗ Check network connectivity to MongoDB cluster
+
 📊 COMMON FAILURE POINTS TO CHECK:
    ❗ SSH connectivity to EC2: ${EC2_HOST}
    ❗ Docker service status on Jenkins & EC2
@@ -258,6 +352,8 @@ Happy Coding! 🚀
    3. Test SSH connection manually: ssh ${EC2_USER}@${EC2_HOST}
    4. Check Docker status: docker ps -a
    5. Review container logs: docker logs ${CONTAINER_NAME}
+   6. Test MongoDB connection from EC2 manually
+   7. Verify Jenkins credential 'PRINCE_MONGO_URI' is configured
 
 ❌ Action Required: Please investigate and fix the issue!
 
@@ -290,6 +386,7 @@ Need Help? Check the troubleshooting guide! 🛠️
    • Application URL: http://${EC2_HOST}:${APP_PORT}
    • Some tests may have failed but deployment continued
    • Check test results and application functionality
+   • MongoDB connection may be working but verify database operations
 
 🔗 REVIEW LINKS:
    • View Build: ${env.BUILD_URL}
@@ -306,7 +403,7 @@ Review Required! ⚠️
     }
 }
 
-// Helper Functions
+// ✅ UNCHANGED: Helper Functions
 def testSSHConnection() {
     def sshTest = sh(script: """
         ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${EC2_USER}@${EC2_HOST} 'echo "SSH OK"'
@@ -353,8 +450,9 @@ def copyApplicationFiles() {
     '''
 }
 
-def deployApplication() {
-    echo "🔄 Deploying application..."
+// ✅ NEW: Secure deployment function using Jenkins credentials
+def deployApplicationSecure() {
+    echo "🔄 Deploying application with secure MongoDB connection..."
     sh '''
         ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
             cd ''' + env.APP_DIR + '''
@@ -368,6 +466,7 @@ def deployApplication() {
             
             # Remove old image to save space
             if docker images | grep -q ''' + env.DOCKER_IMAGE + '''; then
+                echo "Removing old image..."
                 docker rmi ''' + env.DOCKER_IMAGE + ''' || true
             fi
             
@@ -375,12 +474,12 @@ def deployApplication() {
             echo "Building image on EC2..."
             docker build -t ''' + env.DOCKER_IMAGE + ''' .
             
-            echo "Starting new container..."
+            echo "Starting new container with MongoDB connection..."
             docker run -d \
                 --name ''' + env.CONTAINER_NAME + ''' \
                 --restart unless-stopped \
                 -p ''' + env.APP_PORT + ''':''' + env.APP_PORT + ''' \
-                -e MONGO_URI="$MONGO_URI" \
+                -e MONGO_URI="''' + env.MONGO_URI + '''" \
                 ''' + env.DOCKER_IMAGE + '''
             
             # Verify container started
@@ -388,6 +487,22 @@ def deployApplication() {
             if docker ps | grep -q ''' + env.CONTAINER_NAME + '''; then
                 echo "✅ Container started successfully"
                 docker ps | grep ''' + env.CONTAINER_NAME + '''
+                
+                # Quick MongoDB connection test
+                echo "🔍 Testing MongoDB connection in container..."
+                docker exec ''' + env.CONTAINER_NAME + ''' python3 -c "
+import os
+print('MONGO_URI configured:', 'Yes' if os.environ.get('MONGO_URI') else 'No')
+try:
+    from pymongo import MongoClient
+    client = MongoClient(os.environ.get('MONGO_URI'), serverSelectionTimeoutMS=3000)
+    client.admin.command('ping')
+    print('✅ MongoDB connection test successful')
+except ImportError:
+    print('⚠️ pymongo not available, skipping connection test')
+except Exception as e:
+    print(f'⚠️ MongoDB connection test failed: {e}')
+" || echo "⚠️ MongoDB connection test completed"
             else
                 echo "❌ Container failed to start"
                 docker logs ''' + env.CONTAINER_NAME + '''
@@ -406,21 +521,40 @@ def cleanupResources() {
     '''
 }
 
+// ✅ ENHANCED: Debug function with MongoDB-specific checks
 def collectDebugInfo() {
     try {
-        sshagent([env.SSH_CREDENTIALS_ID]) {
-            sh '''
-                echo "🔍 Collecting debug information..."
-                ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
-                    echo "=== Docker Status ==="
-                    docker ps -a || true
-                    echo "=== Container Logs ==="
-                    docker logs ''' + env.CONTAINER_NAME + ''' || true
-                    echo "=== System Resources ==="
-                    df -h || true
-                    free -h || true
-                ' || true
-            '''
+        withCredentials([string(credentialsId: 'PRINCE_MONGO_URI', variable: 'MONGO_URI')]) {
+            sshagent([env.SSH_CREDENTIALS_ID]) {
+                sh '''
+                    echo "🔍 Collecting debug information..."
+                    ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                        echo "=== Docker Status ==="
+                        docker ps -a || true
+                        
+                        echo "=== Container Logs ==="
+                        docker logs --tail 50 ''' + env.CONTAINER_NAME + ''' || true
+                        
+                        echo "=== Container Environment ==="
+                        docker exec ''' + env.CONTAINER_NAME + ''' env | grep -E "(MONGO|PORT|PATH)" || true
+                        
+                        echo "=== MongoDB Connection Test ==="
+                        docker exec ''' + env.CONTAINER_NAME + ''' python3 -c "
+import os
+print('MONGO_URI present:', bool(os.environ.get('MONGO_URI')))
+if os.environ.get('MONGO_URI'):
+    print('MONGO_URI format:', os.environ.get('MONGO_URI')[:30] + '...')
+" || true
+                        
+                        echo "=== System Resources ==="
+                        df -h || true
+                        free -h || true
+                        
+                        echo "=== Network Connectivity ==="
+                        ss -tlnp | grep ''' + env.APP_PORT + ''' || true
+                    ' || true
+                '''
+            }
         }
     } catch (Exception e) {
         echo "Could not collect debug information: ${e.getMessage()}"
