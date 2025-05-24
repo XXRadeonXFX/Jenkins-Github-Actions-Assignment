@@ -56,7 +56,7 @@ pipeline {
                         }
                     }
 
-                    // ✅ FIXED: Verify MongoDB credentials are configured
+                    // Verify MongoDB credentials are configured
                     try {
                         withCredentials([string(credentialsId: 'PRINCE_MONGO_URI', variable: 'MONGO_URI_TEST')]) {
                             if (env.MONGO_URI_TEST == null || env.MONGO_URI_TEST.trim() == '') {
@@ -141,7 +141,6 @@ pipeline {
                 script {
                     echo "Deploying to EC2 with secure MongoDB connection..."
                     
-                    // ✅ FIXED: Use withCredentials to securely access MONGO_URI
                     withCredentials([string(credentialsId: 'PRINCE_MONGO_URI', variable: 'MONGO_URI')]) {
                         sshagent([env.SSH_CREDENTIALS_ID]) {
 
@@ -164,21 +163,18 @@ pipeline {
 
         stage('🏥 Health Check') {
             options {
-                timeout(time: 10, unit: 'MINUTES')  // ✅ FIXED: Stage-specific timeout
+                timeout(time: 10, unit: 'MINUTES')
             }
             steps {
                 script {
                     echo "Running comprehensive health checks..."
                     
-                    // ✅ FIXED: Enhanced health check with MongoDB verification
                     withCredentials([string(credentialsId: 'PRINCE_MONGO_URI', variable: 'MONGO_URI')]) {
                         sshagent([env.SSH_CREDENTIALS_ID]) {
-                            // ✅ FIXED: Add retry mechanism for stability
                             retry(2) {
-                                sh '''
+                                sh """
                                     sleep 15
                                     
-                                    # ✅ FIXED: Added timeout protection
                                     timeout 300 ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 ${EC2_USER}@${EC2_HOST} '
                                         echo "Running comprehensive health checks..."
                                         
@@ -200,8 +196,6 @@ pipeline {
                                         echo "=== Environment Variables Check ==="
                                         if docker exec ${CONTAINER_NAME} env | grep -q MONGO_URI; then
                                             echo "SUCCESS: MONGO_URI environment variable is set"
-                                            # Show masked URI for security
-                                            docker exec ${CONTAINER_NAME} bash -c "echo \\"MONGO_URI: \\${MONGO_URI:0:20}...[MASKED]\\""
                                         else
                                             echo "ERROR: MONGO_URI environment variable not found"
                                             docker exec ${CONTAINER_NAME} env
@@ -226,7 +220,7 @@ try:
     print('SUCCESS: MongoDB connection successful')
     
     # Test database access
-    db_name = mongo_uri.split('/')[-1].split('?')[0] if '/' in mongo_uri else 'test'
+    db_name = mongo_uri.split('/')[3].split('?')[0] if '/' in mongo_uri else 'test'
     db = client[db_name]
     collections = db.list_collection_names()
     print('SUCCESS: Database access successful. Collections: ' + str(len(collections)))
@@ -241,14 +235,14 @@ except Exception as e:
                                         # Test HTTP endpoint
                                         echo "=== HTTP Endpoint Test ==="
                                         for i in {1..5}; do
-                                            echo "HTTP test attempt $i/5"
+                                            echo "HTTP test attempt \\$i/5"
                                             
                                             if curl -f -s --max-time 10 http://localhost:${APP_PORT}/ >/dev/null; then
                                                 echo "SUCCESS: Application responding to HTTP requests"
                                                 
                                                 # Get response for verification
-                                                response=$(curl -s --max-time 5 http://localhost:${APP_PORT}/ | head -c 200)
-                                                echo "Response preview: $response"
+                                                response=\\$(curl -s --max-time 5 http://localhost:${APP_PORT}/ | head -c 200)
+                                                echo "Response preview: \\$response"
                                                 
                                                 echo "SUCCESS: All health checks passed!"
                                                 exit 0
@@ -263,7 +257,7 @@ except Exception as e:
                                         docker logs --tail 50 ${CONTAINER_NAME}
                                         exit 1
                                     '
-                                '''
+                                """
                             }
                         }
                     }
@@ -286,19 +280,15 @@ except Exception as e:
                 echo "Application available at: http://${EC2_HOST}:${APP_PORT}"
             }
 
-            // ✅ FIXED: Success notification
             mail to: env.NOTIFICATION_EMAIL,
                  subject: "SUCCESS: ${env.JOB_NAME} Build #${env.BUILD_NUMBER}",
                  body: """
-═══════════════════════════════════════════════════════════════
 BUILD SUCCESSFUL!
-═══════════════════════════════════════════════════════════════
 
 BUILD DETAILS:
    • Job Name: ${env.JOB_NAME}
    • Build Number: #${env.BUILD_NUMBER}
    • Build Time: ${new Date()}
-   • Jenkins URL: ${env.JENKINS_URL}
 
 DEPLOYMENT INFO:
    • Application URL: http://${EC2_HOST}:${APP_PORT}
@@ -321,10 +311,6 @@ QUICK LINKS:
 All stages completed successfully!
 Application is running and healthy!
 Ready for use!
-
-═══════════════════════════════════════════════════════════════
-Happy Coding!
-═══════════════════════════════════════════════════════════════
                  """
         }
 
@@ -334,19 +320,15 @@ Happy Coding!
                 collectDebugInfo()
             }
 
-            // ✅ FIXED: Failure notification
             mail to: env.NOTIFICATION_EMAIL,
                  subject: "FAILURE: ${env.JOB_NAME} Build #${env.BUILD_NUMBER}",
                  body: """
-═══════════════════════════════════════════════════════════════
 BUILD FAILED!
-═══════════════════════════════════════════════════════════════
 
 BUILD DETAILS:
    • Job Name: ${env.JOB_NAME}
    • Build Number: #${env.BUILD_NUMBER}
    • Failed Time: ${new Date()}
-   • Jenkins URL: ${env.JENKINS_URL}
 
 FAILURE INFO:
    • Target Server: ${EC2_HOST}
@@ -357,7 +339,6 @@ FAILURE INFO:
 TROUBLESHOOTING LINKS:
    • View Build: ${env.BUILD_URL}
    • Console Logs: ${env.BUILD_URL}console
-   • Blue Ocean: ${env.BUILD_URL}display/redirect
 
 MONGODB-SPECIFIC CHECKS:
    • Verify MongoDB URI credential 'PRINCE_MONGO_URI' exists in Jenkins
@@ -366,28 +347,7 @@ MONGODB-SPECIFIC CHECKS:
    • Validate database authentication credentials
    • Check network connectivity to MongoDB cluster
 
-COMMON FAILURE POINTS TO CHECK:
-   • SSH connectivity to EC2: ${EC2_HOST}
-   • Docker service status on Jenkins & EC2
-   • Application dependencies in requirements.txt
-   • Port ${APP_PORT} availability on EC2
-   • Container build process and Dockerfile
-   • EC2 disk space and memory
-
-DEBUG STEPS:
-   1. Check console logs for specific error messages
-   2. Verify EC2 instance is running and accessible
-   3. Test SSH connection manually: ssh ${EC2_USER}@${EC2_HOST}
-   4. Check Docker status: docker ps -a
-   5. Review container logs: docker logs ${CONTAINER_NAME}
-   6. Test MongoDB connection from EC2 manually
-   7. Verify Jenkins credential 'PRINCE_MONGO_URI' is configured
-
 Action Required: Please investigate and fix the issue!
-
-═══════════════════════════════════════════════════════════════
-Need Help? Check the troubleshooting guide!
-═══════════════════════════════════════════════════════════════
                  """
         }
 
@@ -399,9 +359,7 @@ Need Help? Check the troubleshooting guide!
             mail to: env.NOTIFICATION_EMAIL,
                  subject: "UNSTABLE: ${env.JOB_NAME} Build #${env.BUILD_NUMBER}",
                  body: """
-═══════════════════════════════════════════════════════════════
 BUILD UNSTABLE!
-═══════════════════════════════════════════════════════════════
 
 BUILD DETAILS:
    • Job Name: ${env.JOB_NAME}
@@ -413,24 +371,14 @@ INVESTIGATION NEEDED:
    • Application URL: http://${EC2_HOST}:${APP_PORT}
    • Some tests may have failed but deployment continued
    • Check test results and application functionality
-   • MongoDB connection may be working but verify database operations
-
-REVIEW LINKS:
-   • View Build: ${env.BUILD_URL}
-   • Console Output: ${env.BUILD_URL}console
-   • Test Application: http://${EC2_HOST}:${APP_PORT}
 
 Please review test results and application status!
-
-═══════════════════════════════════════════════════════════════
-Review Required!
-═══════════════════════════════════════════════════════════════
                  """
         }
     }
 }
 
-// ✅ FIXED: Helper Functions
+// ✅ FIXED: Helper Functions with proper variable substitution
 def testSSHConnection() {
     def sshTest = sh(script: """
         ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${EC2_USER}@${EC2_HOST} 'echo "SSH OK"'
@@ -469,18 +417,18 @@ def setupEC2Environment() {
 
 def copyApplicationFiles() {
     echo "Copying application files..."
-    sh '''
+    sh """
         # Copy main application files
-        scp -o StrictHostKeyChecking=no \
-            Dockerfile app.py requirements.txt test_app.py \
+        scp -o StrictHostKeyChecking=no \\
+            Dockerfile app.py requirements.txt test_app.py \\
             ${EC2_USER}@${EC2_HOST}:${APP_DIR}/
-    '''
+    """
 }
 
-// ✅ FIXED: Secure deployment function with proper MongoDB URI handling
+// ✅ FIXED: Secure deployment function with proper variable substitution
 def deployApplicationSecure() {
     echo "Deploying application with secure MongoDB connection..."
-    sh '''
+    sh """
         ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
             cd ${APP_DIR}
             
@@ -506,7 +454,7 @@ def deployApplicationSecure() {
                 --name ${CONTAINER_NAME} \\
                 --restart unless-stopped \\
                 -p ${APP_PORT}:${APP_PORT} \\
-                -e MONGO_URI="''' + env.MONGO_URI + '''" \\
+                -e MONGO_URI="${MONGO_URI}" \\
                 ${DOCKER_IMAGE}
             
             # Verify container started
@@ -536,7 +484,7 @@ except Exception as e:
                 exit 1
             fi
         '
-    '''
+    """
 }
 
 def cleanupResources() {
@@ -548,7 +496,7 @@ def cleanupResources() {
     '''
 }
 
-// ✅ FIXED: Debug function with proper error handling
+// ✅ FIXED: Debug function with proper syntax
 def collectDebugInfo() {
     try {
         withCredentials([string(credentialsId: 'PRINCE_MONGO_URI', variable: 'MONGO_URI')]) {
