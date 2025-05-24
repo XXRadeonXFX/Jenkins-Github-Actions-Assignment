@@ -330,7 +330,6 @@ Once you push to staging branch:
 - ✅ Runs health checks
 
 ![Output of Staging](screenshots/output-staging.png)
-*Here is the output of staging deployment*
 
 ## 🔍 Step 3: Monitor Deployment
 
