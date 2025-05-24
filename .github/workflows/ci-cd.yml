@@ -160,10 +160,10 @@ jobs:
           echo "Testing optimized SSH connection..."
           ssh staging "echo 'SSH connection successful'; whoami; uptime"
 
-      - name: 🚀 ULTRA-FAST File Transfer (30-60 seconds!)
-        timeout-minutes: 3
+      - name: 🚀 Smart File Transfer (with fallbacks)
+        timeout-minutes: 5
         run: |
-          echo "Starting ultra-fast file transfer..."
+          echo "Starting smart file transfer..."
           
           # Check local file size
           echo "Local Docker image size: $(du -h app.tar.gz)"
@@ -171,17 +171,51 @@ jobs:
           # Prepare staging directory
           ssh staging "mkdir -p /tmp/deployment && rm -f /tmp/deployment/*"
           
-          # Method 1: Direct SCP without compression (fastest for pre-compressed files)
-          echo "Using direct SCP transfer (no double compression)..."
-          time scp -o Compression=no -o BatchMode=yes app.tar.gz staging:/tmp/deployment/
-          
-          # Transfer smaller files separately (much faster)
-          echo "Transferring application files..."
-          scp -o Compression=no -o BatchMode=yes requirements.txt app.py staging:/tmp/deployment/
+          # Method 1: Try optimized SCP with progress
+          echo "Attempting Method 1: Optimized SCP..."
+          if timeout 180 scp -v -o Compression=no -o BatchMode=yes -o ConnectTimeout=30 app.tar.gz staging:/tmp/deployment/; then
+            echo "✅ SCP transfer successful!"
+            scp -o Compression=no requirements.txt app.py staging:/tmp/deployment/
+          else
+            echo "⚠️ SCP failed or too slow, trying Method 2: Chunked transfer..."
+            
+            # Method 2: Split file and transfer in chunks
+            echo "Splitting file into smaller chunks..."
+            split -b 10M app.tar.gz app_chunk_
+            
+            echo "Transferring chunks..."
+            for chunk in app_chunk_*; do
+              echo "Transferring $chunk..."
+              if ! timeout 60 scp -o Compression=no "$chunk" staging:/tmp/deployment/; then
+                echo "❌ Chunk transfer failed: $chunk"
+                exit 1
+              fi
+            done
+            
+            # Reassemble on server
+            echo "Reassembling file on server..."
+            ssh staging "cd /tmp/deployment && cat app_chunk_* > app.tar.gz && rm app_chunk_*"
+            
+            # Transfer other files
+            scp -o Compression=no requirements.txt app.py staging:/tmp/deployment/
+            echo "✅ Chunked transfer completed!"
+          fi
           
           # Verify transfer
           echo "Verifying files on staging server..."
           ssh staging "ls -lh /tmp/deployment/ && echo 'Transfer completed successfully'"
+          
+          # Verify file integrity
+          echo "Verifying file integrity..."
+          LOCAL_SIZE=$(stat -f%z app.tar.gz 2>/dev/null || stat -c%s app.tar.gz)
+          REMOTE_SIZE=$(ssh staging "stat -f%z /tmp/deployment/app.tar.gz 2>/dev/null || stat -c%s /tmp/deployment/app.tar.gz")
+          
+          if [ "$LOCAL_SIZE" = "$REMOTE_SIZE" ]; then
+            echo "✅ File integrity verified (Size: $LOCAL_SIZE bytes)"
+          else
+            echo "❌ File size mismatch! Local: $LOCAL_SIZE, Remote: $REMOTE_SIZE"
+            exit 1
+          fi
           
           echo "✅ Files copied!"
 
@@ -385,28 +419,66 @@ jobs:
           echo "Testing SSH connection to production..."
           ssh production "echo 'SSH connection successful'; whoami; uptime"
 
-      - name: 🚀 ULTRA-FAST File Transfer to Production
-        timeout-minutes: 2
+      - name: 🚀 Smart File Transfer to Production
+        timeout-minutes: 8
         run: |
-          echo "Starting ultra-fast file transfer to production..."
+          echo "Starting smart file transfer to production..."
           
           # Check local file size
           echo "Local Docker image size: $(du -h app.tar.gz)"
           
+          # Test network speed first
+          echo "Testing network connection..."
+          ssh production "curl -s -w 'Download speed: %{speed_download} bytes/sec\n' -o /dev/null http://speedtest.ftp.otenet.gr/files/test1Mb.db || echo 'Speed test failed, continuing...'"
+          
           # Prepare production directory
           ssh production "mkdir -p /tmp/deployment && rm -f /tmp/deployment/*"
           
-          # Direct SCP transfer without compression (fastest for pre-compressed files)
-          echo "Using direct SCP transfer..."
-          time scp -o Compression=no -o BatchMode=yes app.tar.gz production:/tmp/deployment/
-          
-          # Transfer smaller files
-          echo "Transferring application files..."
-          scp -o Compression=no -o BatchMode=yes requirements.txt app.py production:/tmp/deployment/
+          # Method 1: Try optimized SCP with progress
+          echo "Attempting Method 1: Optimized SCP..."
+          if timeout 300 scp -v -o Compression=no -o BatchMode=yes -o ConnectTimeout=30 app.tar.gz production:/tmp/deployment/; then
+            echo "✅ SCP transfer successful!"
+            scp -o Compression=no requirements.txt app.py production:/tmp/deployment/
+          else
+            echo "⚠️ SCP failed or too slow, trying Method 2: Chunked transfer..."
+            
+            # Method 2: Split file and transfer in chunks
+            echo "Splitting file into smaller chunks..."
+            split -b 10M app.tar.gz app_chunk_
+            
+            echo "Transferring chunks..."
+            for chunk in app_chunk_*; do
+              echo "Transferring $chunk..."
+              if ! timeout 60 scp -o Compression=no "$chunk" production:/tmp/deployment/; then
+                echo "❌ Chunk transfer failed: $chunk"
+                exit 1
+              fi
+            done
+            
+            # Reassemble on server
+            echo "Reassembling file on server..."
+            ssh production "cd /tmp/deployment && cat app_chunk_* > app.tar.gz && rm app_chunk_*"
+            
+            # Transfer other files
+            scp -o Compression=no requirements.txt app.py production:/tmp/deployment/
+            echo "✅ Chunked transfer completed!"
+          fi
           
           # Verify transfer
           echo "Verifying files on production server..."
           ssh production "ls -lh /tmp/deployment/ && echo 'Transfer completed successfully'"
+          
+          # Verify file integrity
+          echo "Verifying file integrity..."
+          LOCAL_SIZE=$(stat -f%z app.tar.gz 2>/dev/null || stat -c%s app.tar.gz)
+          REMOTE_SIZE=$(ssh production "stat -f%z /tmp/deployment/app.tar.gz 2>/dev/null || stat -c%s /tmp/deployment/app.tar.gz")
+          
+          if [ "$LOCAL_SIZE" = "$REMOTE_SIZE" ]; then
+            echo "✅ File integrity verified (Size: $LOCAL_SIZE bytes)"
+          else
+            echo "❌ File size mismatch! Local: $LOCAL_SIZE, Remote: $REMOTE_SIZE"
+            exit 1
+          fi
           
           echo "✅ Files copied to production!"
 
