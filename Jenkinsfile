@@ -69,15 +69,37 @@ pipeline {
             steps {
                 echo "Setting up Python environment..."
                 sh '''
+                    # Debug: Show current directory and contents
+                    echo "Current directory: $(pwd)"
+                    echo "Directory contents:"
+                    ls -la
+                    
+                    # Ensure python3-venv is installed
+                    which python3 || (echo "Python3 not found!" && exit 1)
+                    
                     # Create virtual environment if not exists
                     if [ ! -d "venv" ]; then
-                        python3 -m venv venv
+                        echo "Creating virtual environment..."
+                        python3 -m venv venv || (echo "Failed to create venv. Installing python3-venv..." && sudo apt-get update && sudo apt-get install -y python3-venv && python3 -m venv venv)
                     fi
                     
-                    # Install dependencies
+                    # Verify venv was created
+                    if [ ! -f "venv/bin/activate" ]; then
+                        echo "ERROR: Virtual environment not created properly!"
+                        echo "Contents of venv directory:"
+                        ls -la venv/ || echo "venv directory does not exist"
+                        exit 1
+                    fi
+                    
+                    # Activate virtual environment and install dependencies
+                    echo "Activating virtual environment..."
                     . venv/bin/activate
+                    
+                    echo "Installing dependencies..."
                     pip install --upgrade pip
                     pip install -r requirements.txt
+                    
+                    echo "✅ Dependencies installed successfully"
                 '''
             }
         }
