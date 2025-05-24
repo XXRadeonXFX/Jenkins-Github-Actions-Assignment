@@ -248,7 +248,7 @@ student-management-cicd/
 2. **Configure Repository:**
    ```
    SCM: Git
-   Repository URL: https://github.com/yourusername/student-management-cicd.git
+   Repository URL: https://github.com/XXRadeonXFX/Jenkins-Github-Actions-Assignment.git
    Script Path: Jenkinsfile
    ```
 
@@ -257,7 +257,52 @@ student-management-cicd/
    ✓ GitHub hook trigger for GITScm polling
    ```
 
-## ⚡ GitHub Actions Workflow
+
+# 🚀 Student App Deployment on EC2
+
+This project provides a Jenkins-based pipeline to deploy the **Student App** onto a remote **EC2 instance** using Docker. The pipeline uses SSH credentials to access the server and manages container lifecycle (stop → remove → run) in a fully automated manner.
+
+---
+
+## 📦 Environment Variables
+
+These environment variables are used to control the deployment behavior:
+
+| Variable              | Description                                                 |
+|-----------------------|-------------------------------------------------------------|
+| `SSH_CREDENTIALS_ID`  | Jenkins SSH credentials ID for accessing the EC2 instance   |
+| `EC2_USER`            | SSH username on the EC2 instance (`ubuntu` by default)      |
+| `EC2_HOST`            | Public IP address of the EC2 instance                       |
+| `APP_DIR`             | Target directory on EC2 where the app files will be stored  |
+| `DOCKER_IMAGE`        | Name of the Docker image used for the app                   |
+| `CONTAINER_NAME`      | Name of the Docker container that will be managed           |
+| `APP_PORT`            | Port on which the app will run inside the container         |
+| `NOTIFICATION_EMAIL`  | Email address to receive deployment notifications           |
+
+---
+
+## 🛠️ Prerequisites
+
+- A running EC2 instance with Docker installed
+- SSH access using Jenkins credentials
+- Jenkins configured with `SSH_CREDENTIALS_ID`
+- Dockerfile and app source code stored in the Jenkins workspace or Git repo
+
+---
+
+## 📄 Deployment Overview
+
+- Docker will be installed Automatically when jenkins pipeline will run
+- Wait for the pipeline to finish and test the deployment on 
+
+```
+http://<ec2-ip>:5000
+http://<ec2-ip>:5000/students
+http://<ec2-ip>:5000/health
+``` 
+
+---
+# ⚡ GitHub Actions Workflow
 ![GitHub Actions Workflow](screenshots/github-actions.png)
 *GitHub Actions workflow with parallel jobs and secret management*
 
@@ -508,4 +553,3 @@ python -c "from pymongo import MongoClient; MongoClient('$MONGO_URI').admin.comm
 - **Secrets**: Quarterly rotation
 - **Backups**: Daily automated backups
 - **Monitoring**: Performance metrics review
-
