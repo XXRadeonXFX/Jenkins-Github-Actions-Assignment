@@ -154,6 +154,8 @@ student-management-cicd/
     ├── github-actions.png
     └── production-deployment.png
     └── staging-deployment.png
+    └── staging-output.png
+    └── production-output.png
     └── email-test.png
 ```
 
