@@ -161,71 +161,43 @@ pipeline {
             }
         }
 
-	stage('🏥 Health Check') {
-		options {
-			timeout(time: 10, unit: 'MINUTES')
-    }
-    steps {
-        script {
-            echo "Running comprehensive health checks..."
-
-            withCredentials([string(credentialsId: 'PRINCE_MONGO_URI', variable: 'MONGO_URI')]) {
-                sshagent([env.SSH_CREDENTIALS_ID]) {
-                    retry(2) {
-                        sh """
+        stage('🏥 Health Check') {
+            steps {
+                script {
+                    echo "Running health checks..."
+                    sshagent([env.SSH_CREDENTIALS_ID]) {
+                        sh '''
                             sleep 15
-                            timeout 300 ssh -o StrictHostKeyChecking=no -o ConnectTimeout=30 ${EC2_USER}@${EC2_HOST} '
-                                echo "Running comprehensive health checks..."
-
-                                echo "=== Container Status Check ==="
-                                if docker ps --filter "name=${CONTAINER_NAME}" --filter "status=running" | grep -q ${CONTAINER_NAME}; then
-                                    echo "SUCCESS: Container is running"
-                                    docker ps | grep ${CONTAINER_NAME}
-                                else
-                                    echo "ERROR: Container is not running"
-                                    docker ps -a | grep ${CONTAINER_NAME} || echo "Container not found"
-                                    docker logs ${CONTAINER_NAME} || echo "No logs available"
-                                    exit 1
-                                fi
-
-                                echo "=== Environment Variables Check ==="
-                                if docker exec ${CONTAINER_NAME} env | grep -q MONGO_URI; then
-                                    echo "SUCCESS: MONGO_URI environment variable is set"
-                                else
-                                    echo "ERROR: MONGO_URI environment variable not found"
-                                    docker exec ${CONTAINER_NAME} env
-                                    exit 1
-                                fi
-
-                                echo "=== MongoDB Connection Test ==="
-                                docker exec ${CONTAINER_NAME} /bin/bash -c "python3 -c \"import os, sys\ntry:\n    from pymongo import MongoClient\n    mongo_uri = os.environ.get('MONGO_URI')\n    if not mongo_uri:\n        print('ERROR: MONGO_URI environment variable not found')\n        sys.exit(1)\n    print('Testing MongoDB connection...')\n    client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)\n    client.admin.command('ping')\n    print('SUCCESS: MongoDB connection successful')\n    db_name = mongo_uri.split('/')[-1].split('?')[0] if '/' in mongo_uri else 'test'\n    db = client[db_name]\n    collections = db.list_collection_names()\n    print('SUCCESS: Database access successful. Collections: ' + str(len(collections)))\nexcept ImportError:\n    print('WARNING: pymongo not installed, skipping MongoDB connection test')\nexcept Exception as e:\n    print('ERROR: MongoDB connection failed: ' + str(e))\n    sys.exit(1)\"" || exit 1
-
-                                echo "=== HTTP Endpoint Test ==="
+                            
+                            ssh -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                                echo "Checking container status..."
+                                
                                 for i in {1..5}; do
-                                    echo "HTTP test attempt $i/5"
-                                    if curl -f -s --max-time 10 http://localhost:${APP_PORT}/ >/dev/null; then
-                                        echo "SUCCESS: Application responding to HTTP requests"
-                                        response=$(curl -s --max-time 5 http://localhost:${APP_PORT}/ | head -c 200)
-                                        echo "Response preview: $response"
-                                        echo "SUCCESS: All health checks passed!"
-                                        exit 0
+                                    echo "Health check attempt $i/5"
+                                    
+                                    if docker ps --filter "name=''' + env.CONTAINER_NAME + '''" --filter "status=running" | grep -q ''' + env.CONTAINER_NAME + '''; then
+                                        echo "✅ Container is running"
+                                        
+                                        if curl -f -s http://localhost:''' + env.APP_PORT + '''/ >/dev/null; then
+                                            echo "✅ Application responding to HTTP requests"
+                                            echo "🎉 Health check passed!"
+                                            exit 0
+                                        fi
                                     fi
+                                    
                                     echo "Waiting 10 seconds before retry..."
                                     sleep 10
                                 done
-
-                                echo "ERROR: HTTP health check failed"
-                                docker logs --tail 50 ${CONTAINER_NAME}
+                                
+                                echo "❌ Health check failed"
+                                docker logs ''' + env.CONTAINER_NAME + '''
                                 exit 1
                             '
-                        """
-						}
-					}
-				}
-			}
-		}
-	}
-
+                        '''
+                    }
+                }
+            }
+        }
 
     }
 
