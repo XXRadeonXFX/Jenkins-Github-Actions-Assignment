@@ -204,45 +204,45 @@ pipeline {
                                         
                                         # Test MongoDB connection
                                         echo '=== MongoDB Connection Test ==='
-                                        docker exec ${CONTAINER_NAME} python3 -c '
+                                        docker exec ${CONTAINER_NAME} python3 -c "
 import os
 import sys
 try:
     from pymongo import MongoClient
-    mongo_uri = os.environ.get(\"MONGO_URI\")
+    mongo_uri = os.environ.get('MONGO_URI')
     if not mongo_uri:
-        print(\"ERROR: MONGO_URI environment variable not found\")
+        print('ERROR: MONGO_URI environment variable not found')
         sys.exit(1)
-    
-    print(\"Testing MongoDB connection...\")
+
+    print('Testing MongoDB connection...')
     client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
-    client.admin.command(\"ping\")
-    print(\"SUCCESS: MongoDB connection successful\")
-    
+    client.admin.command('ping')
+    print('SUCCESS: MongoDB connection successful')
+
     # Test database access
-    db_name = mongo_uri.split(\"/\")[3].split(\"?\")[0] if \"/\" in mongo_uri else \"test\"
+    db_name = mongo_uri.split('/')[3].split('?')[0] if '/' in mongo_uri else 'test'
     db = client[db_name]
     collections = db.list_collection_names()
-    print(\"SUCCESS: Database access successful. Collections: \" + str(len(collections)))
-    
+    print('SUCCESS: Database access successful. Collections: ' + str(len(collections)))
+
 except ImportError:
-    print(\"WARNING: pymongo not installed, skipping MongoDB connection test\")
+    print('WARNING: pymongo not installed, skipping MongoDB connection test')
 except Exception as e:
-    print(\"ERROR: MongoDB connection failed: \" + str(e))
+    print('ERROR: MongoDB connection failed: ' + str(e))
     sys.exit(1)
-' || exit 1
+" || exit 1
                                         
                                         # Test HTTP endpoint
                                         echo '=== HTTP Endpoint Test ==='
                                         for i in {1..5}; do
-                                            echo \"HTTP test attempt \$i/5\"
+                                            echo "HTTP test attempt \$i/5"
                                             
                                             if curl -f -s --max-time 10 http://localhost:${APP_PORT}/ >/dev/null; then
                                                 echo 'SUCCESS: Application responding to HTTP requests'
                                                 
                                                 # Get response for verification
                                                 response=\$(curl -s --max-time 5 http://localhost:${APP_PORT}/ | head -c 200)
-                                                echo \"Response preview: \$response\"
+                                                echo "Response preview: \$response"
                                                 
                                                 echo 'SUCCESS: All health checks passed!'
                                                 exit 0
@@ -264,6 +264,7 @@ except Exception as e:
                 }
             }
         }
+
     }
 
     post {
