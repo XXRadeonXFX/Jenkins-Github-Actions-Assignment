@@ -158,6 +158,7 @@ student-management-cicd/
     └── production-output.png
     └── email-test.png
     └── github-webhook.png
+    └── jenkinsfile.png
 ```
 
 ## 🚀 Getting Started
@@ -336,11 +337,13 @@ Example: `https://github.com/XXRadeonXFX/Jenkins-Github-Actions-Assignment`
 ---
 
 
-# 🚀 Student App Deployment on EC2
+# 🚀 Student App Deployment on EC2 Through Jenkins
 
 This project provides a Jenkins-based pipeline to deploy the **Student App** onto a remote **EC2 instance** using Docker. The pipeline uses SSH credentials to access the server and manages container lifecycle (stop → remove → run) in a fully automated manner.
 
 ---
+## -> jenkinsfile
+![Jenkins File Environment Variables](screenshots/jenkinsfile.png)
 
 ## 📦 Environment Variables
 
