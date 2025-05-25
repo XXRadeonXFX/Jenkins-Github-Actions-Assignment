@@ -157,6 +157,7 @@ student-management-cicd/
     └── staging-output.png
     └── production-output.png
     └── email-test.png
+    └── github-webhook.png
 ```
 
 ## 🚀 Getting Started
@@ -256,6 +257,83 @@ student-management-cicd/
    ```
    ✓ GitHub hook trigger for GITScm polling
    ```
+
+---
+
+# 📘 How to Add a GitHub Webhook
+
+Follow these steps to configure a webhook for your GitHub repository:
+
+---
+
+### ✅ Step 1: Open Your Repository
+
+Go to your GitHub repository
+Example: `https://github.com/XXRadeonXFX/Jenkins-Github-Actions-Assignment`
+
+![Github Repository Webhook](screenshots/github-webhook.png)
+---
+
+### ⚙️ Step 2: Go to Webhook Settings
+
+1. Click on the **Settings** tab in the top menu.
+2. From the left sidebar, scroll down to **Code and automation** → Click on **Webhooks**.
+
+---
+
+### ➕ Step 3: Add a Webhook
+
+1. Click the green **“Add webhook”** button.
+
+---
+
+### 📝 Step 4: Fill in Webhook Details
+
+* **Payload URL**:
+  Enter the URL where you want GitHub to send data (your server, Jenkins, etc.).
+  Example:
+
+  ```
+  https://jenkinsacademics.herovired.com/github-webhook/
+  ```
+
+* **Content type**:
+  Select `application/json`
+
+* **Secret** *(optional but recommended)*:
+  Enter a strong random string (used to verify the source of the payloads)
+
+---
+
+### 🔒 Step 5: SSL Verification
+
+* Keep **Enable SSL verification** selected (recommended).
+
+---
+
+### ⚡ Step 6: Select Events
+
+* Choose:
+  ✅ **Just the push event**
+
+> This means the webhook will trigger every time code is pushed to the repository.
+
+---
+
+### ✅ Step 7: Activate the Webhook
+
+* Ensure **Active** is checked at the bottom
+* Click the green **“Add webhook”** button
+
+---
+
+### 📤 Step 8: Test Your Webhook
+
+1. Push a commit to your repository (e.g., `git push`)
+2. Go to **Settings → Webhooks → Click on your webhook → Recent Deliveries**
+3. You’ll see the request status and payload details
+
+---
 
 
 # 🚀 Student App Deployment on EC2
