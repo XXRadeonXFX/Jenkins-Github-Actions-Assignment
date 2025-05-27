@@ -130,9 +130,14 @@ In your Jenkins dashboard:
 
 2. **Add Secret Text Credentials:**
    ```
-   PRINCE_MONGO_URI       = mongodb+srv://username:password@cluster.mongodb.net/student_db
+   PRINCE_MONGO_URI       = mongodb+srv://username:password@cluster.mongodb.net/
    SSH_CREDENTIALS_ID     = "c3b12c2f-9959-46a6-b763-fc4e303082cb"
    ```
+---   
+Note: In order to use Mongo DB URI collection name & Database name is required.
+      -> collection    = students
+      -> Database name = student_db   
+---
 
 ## 📁 Project Structure
 
@@ -182,8 +187,13 @@ student-management-cicd/
    ```bash
    export MONGO_URI="mongodb://localhost:27017/"
    # Or for MongoDB Atlas:
-   export MONGO_URI="mongodb+srv://username:password@cluster.mongodb.net/student_db"
+   export MONGO_URI="mongodb+srv://username:password@cluster.mongodb.net/"
    ```
+---   
+Note: In order to use Mongo DB URI collection name & Database name is required.
+      -> collection    = students
+      -> Database name = student_db
+---
 
 3. **Install Dependencies:**
    ```bash
