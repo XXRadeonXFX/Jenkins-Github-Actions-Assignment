@@ -113,7 +113,7 @@ In your Jenkins dashboard:
 
 2. **Add Required Secrets:**
    ```
-   MONGO_URI              = mongodb+srv://username:password@cluster.mongodb.net/student_db
+   MONGO_URI              = mongodb+srv://username:password@cluster.mongodb.net/
    STAGING_HOST           = your-staging-server-ip
    STAGING_USER           = ubuntu
    STAGING_SSH_KEY        = -----BEGIN OPENSSH PRIVATE KEY-----...
